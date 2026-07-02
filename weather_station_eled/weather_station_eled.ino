@@ -1,12 +1,16 @@
-/**
+/*
  * ============================================================
- *  Weather Station ELED 
+ *  Weather Station ELED
  *  CC1101 WH5300 Outdoor Sensor Receiver + BH1750FVI Light Sensor
  *
- *  BH1750FVI Wiring (I2C):
+ *  BH1750FVI Wiring (I2C addr 0x23)):
  *    VCC → 3.3V, GND → GND
  *    SDA → GPIO 21, SCL → GPIO 22
- *    ADDR → GND (I2C addr 0x23)
+ *    ADDR → GND
+ *
+ *  DS3231 Wiring (I2C addr 0x68):
+ *    VCC → 3.3V, GND → GND
+ *    SDA → GPIO 21, SCL → GPIO 22
  *
  *  CC1101 Wiring:
  *    VCC → 3.3V, GND → GND
@@ -17,16 +21,24 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <BH1750.h>
+#include <RTClib.h>
 #include <ELECHOUSE_CC1101_SRC_DRV.h>
 
 #define GDO2_PIN  4
 #define GDO0_PIN  2
+
 BH1750   lightMeter;
 float    luxValue     = 0.0f;
 uint32_t lastLuxRead  = 0;
 #define  LUX_INTERVAL 2000
 
-// Tuned timing pulse in µs 
+RTC_DS3231 rtc;
+bool rtcOK = false;
+const char *DAYS[] = {
+  "Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"
+};
+
+// Tuned timing pulse in µs
 #define PULSE_1_MIN    350
 #define PULSE_1_MAX    650
 #define PULSE_0_MIN   1100
@@ -67,7 +79,7 @@ void IRAM_ATTR gdo2ISR() {
   }
 }
 
-// CRC-8 poly 0x31 for wind direction 
+// CRC-8 poly 0x31 for wind direction
 uint8_t crc8(uint8_t *d, uint8_t len) {
   uint8_t crc = 0;
   for (uint8_t i = 0; i < len; i++) {
@@ -146,6 +158,29 @@ void updateLux() {
   }
 }
 
+String getDateTimeStr() {
+  if (!rtcOK) return String("RTC ERROR");
+  DateTime now = rtc.now();
+  char buf[40];
+  snprintf(buf, sizeof(buf), "%s, %02d/%02d/%04d %02d:%02d:%02d",
+    DAYS[now.dayOfTheWeek()],
+    now.day(), now.month(), now.year(),
+    now.hour(), now.minute(), now.second()
+  );
+  return String(buf);
+}
+
+String getISOStr() {
+  if (!rtcOK) return String("1970-01-01T00:00:00");
+  DateTime now = rtc.now();
+  char buf[25];
+  snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d",
+    now.year(), now.month(), now.day(),
+    now.hour(), now.minute(), now.second()
+  );
+  return String(buf);
+}
+
 void printWeather(uint8_t *d, uint8_t len) {
   if (len < 10) {
     Serial.println(F("[WARN] Paket terlalu pendek"));
@@ -172,9 +207,14 @@ void printWeather(uint8_t *d, uint8_t len) {
 
   float rainDelta = calcRainDelta(rainRaw);
 
+  String dtStr  = getDateTimeStr();
+  String isoStr = getISOStr();
+
   Serial.println(F("\n╔══════════════════════════════════════╗"));
   Serial.println(F(  "║        WEATHER STATION ELED          ║"));
   Serial.println(F(  "╚══════════════════════════════════════╝"));
+  Serial.printf(     "  Waktu      : %s\n",         dtStr.c_str());
+  Serial.println(F(  "  ─────────────────────────────────────"));
   Serial.printf(     "  Sensor ID  : 0x%02X  Ch: %d  Batt: %s\n",
                      sensorID, channel, battOK ? "OK" : "LOW ⚠");
   Serial.println(F(  "  ─────────────────────────────────────"));
@@ -192,9 +232,10 @@ void printWeather(uint8_t *d, uint8_t len) {
   Serial.printf(     "  Light      : %.1f lux\n",    luxValue);
   Serial.println(F(  "══════════════════════════════════════"));
 
-  // JSON 
+  // JSON
   Serial.println(F("[JSON]"));
   Serial.print(F("{"));
+  Serial.printf("\"datetime\":\"%s\",",    isoStr.c_str());
   Serial.printf("\"id\":\"0x%02X\",",      sensorID);
   Serial.printf("\"ch\":%d,",              channel);
   Serial.printf("\"batt\":\"%s\",",        battOK ? "OK" : "LOW");
@@ -236,8 +277,25 @@ void setup() {
   Serial.println(F(  "   WEATHER STATION ELED STARTING..."));
   Serial.println(F(  "══════════════════════════════════════"));
 
-  // Init BH1750
+  // Init I2C
   Wire.begin(21, 22);
+
+  // Init RTC
+  if (rtc.begin()) {
+    rtcOK = true;
+    if (rtc.lostPower()) {
+      // Manual adjust if needed:rtc.adjust(DateTime(2026, 7, 2, 14, 30, 0));
+      Serial.println(F("[WARN] RTC kehilangan daya, set ke waktu kompilasi"));
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    }
+    DateTime now = rtc.now();
+    Serial.printf("[OK] DS3231 — %s\n", getDateTimeStr().c_str());
+    Serial.printf("[OK] Suhu RTC : %.2f °C\n", rtc.getTemperature());
+  } else {
+    Serial.println(F("[WARN] DS3231 tidak terdeteksi! Cek wiring I2C."));
+  }
+
+  // Init BH1750
   if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {
     Serial.println(F("[OK] BH1750 terdeteksi (0x23)"));
   } else {
