@@ -6,68 +6,112 @@ import '../views/bmkg_screen/bmkg_screen.dart';
 import '../views/notification_screen/notification_screen.dart';
 import '../views/profile_screen/profile_screen.dart';
 
-class NavigationMenu extends StatefulWidget {
-  const NavigationMenu({super.key});
+class NavigationMenu
+    extends StatefulWidget {
+  const NavigationMenu({
+    super.key,
+  });
 
   @override
-  State<NavigationMenu> createState() => _NavigationMenuState();
+  State<NavigationMenu> createState() =>
+      _NavigationMenuState();
 }
 
-class _NavigationMenuState extends State<NavigationMenu> {
+class _NavigationMenuState
+    extends State<NavigationMenu> {
   int currentIndex = 0;
 
-  final List<Widget> pages = const [
-    DashboardScreen(),
-    WifiScreen(),
-    BMKGScreen(),
-    NotificationScreen(),
-    ProfileScreen(),
+  final List<Widget> pages = [
+    const DashboardScreen(),
+
+    const WifiScreen(),
+
+    const BmkgScreen(),
+
+    const NotificationScreen(),
+
+    const ProfileScreen(),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      body: pages[currentIndex],
+      body: IndexedStack(
+        index:
+            currentIndex,
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
+        children:
+            pages,
+      ),
 
-        type: BottomNavigationBarType.fixed,
+      bottomNavigationBar:
+          BottomNavigationBar(
+        currentIndex:
+            currentIndex,
 
-        selectedItemColor: Colors.blue,
+        type:
+            BottomNavigationBarType
+                .fixed,
 
-        unselectedItemColor: Colors.grey,
-
-        onTap: (index) {
+        onTap:
+            (index) {
           setState(() {
-            currentIndex = index;
+            currentIndex =
+                index;
           });
         },
 
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: "Home",
+            icon:
+                Icon(
+              Icons.dashboard,
+            ),
+
+            label:
+                'Home',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.wifi),
-            label: "WiFi",
+            icon:
+                Icon(
+              Icons.wifi,
+            ),
+
+            label:
+                'WiFi',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.cloud),
-            label: "BMKG",
+            icon:
+                Icon(
+              Icons.cloud,
+            ),
+
+            label:
+                'BMKG',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: "Alert",
+            icon:
+                Icon(
+              Icons.notifications,
+            ),
+
+            label:
+                'Alert',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: "Profile",
+            icon:
+                Icon(
+              Icons.person,
+            ),
+
+            label:
+                'Profile',
           ),
         ],
       ),

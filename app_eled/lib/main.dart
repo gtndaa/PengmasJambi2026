@@ -1,38 +1,32 @@
 import 'package:flutter/material.dart';
 
-import 'consts/colors.dart';
 import 'views/splash_screen/splash_screen.dart';
 
 void main() {
-  runApp(const WeatherMonitoringApp());
+  runApp(
+    const MyApp(),
+  );
 }
 
-class WeatherMonitoringApp extends StatelessWidget {
-  const WeatherMonitoringApp({super.key});
+class MyApp
+    extends StatelessWidget {
+  const MyApp({
+    super.key,
+  });
 
   @override
-  Widget build(BuildContext context) {
-
+  Widget build(
+    BuildContext context,
+  ) {
     return MaterialApp(
+      debugShowCheckedModeBanner:
+          false,
 
-      debugShowCheckedModeBanner: false,
+      title:
+          'Pengmas',
 
-      title: "Weather Monitoring",
-
-      theme: ThemeData(
-
-        useMaterial3: true,
-
-        scaffoldBackgroundColor: AppColors.background,
-
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
-        ),
-
-      ),
-
-      home: const SplashScreen(),
-
+      home:
+          const SplashScreen(),
     );
   }
 }
