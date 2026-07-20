@@ -1,67 +1,76 @@
 #include "ConfigManager.h"
-#include "storage/RTCMemory.h"
-#include "storage/SDManager.h"
-#include "utils/Logger.h"
 #include <ArduinoJson.h>
+#include "utils/Logger.h"
 
-void ConfigManager::setDefaults(DeviceConfig& cfg) {
-    strcpy(cfg.wifiSSID, "your-ssid");
-    strcpy(cfg.wifiPassword, "your-password");
-    strcpy(cfg.serverURL, SERVER_URL);
-    strcpy(cfg.apiKey, API_KEY);
-    cfg.uploadInterval = UPLOAD_INTERVAL_MS;
-    cfg.listenWindow = LISTEN_WINDOW_MS;
-    cfg.timezoneOffset = TIMEZONE_OFFSET;
-    cfg.configVersion = 1;
-    cfg.useDeepSleep = true;
+ConfigManager::ConfigManager() {}
+
+bool ConfigManager::begin(const char* namespaceName) {
+    ns = namespaceName;
+    prefs.begin(ns.c_str(), false);
+    return true;
 }
 
 bool ConfigManager::load(DeviceConfig& cfg) {
-    // Coba dari RTC memory dulu
-    uint8_t buf[sizeof(DeviceConfig)];
-    size_t len;
-    if (RTCMemory::loadBuffer(buf, sizeof(buf), len) && len == sizeof(DeviceConfig)) {
-        memcpy(&cfg, buf, sizeof(DeviceConfig));
-        return true;
-    }
-    // Jika gagal, muat dari SD (jika ada)
-    SDManager sd;
-    if (sd.begin()) {
-        String content;
-        if (sd.readAll(content)) {
-            DynamicJsonDocument doc(1024);
-            if (deserializeJson(doc, content) == DeserializationError::Ok) {
-                strcpy(cfg.wifiSSID, doc["ssid"]);
-                strcpy(cfg.wifiPassword, doc["password"]);
-                strcpy(cfg.serverURL, doc["server"]);
-                cfg.uploadInterval = doc["uploadInterval"];
-                cfg.listenWindow = doc["listenWindow"];
-                cfg.timezoneOffset = doc["timezone"];
-                return true;
-            }
-        }
-    }
-    // Default
-    setDefaults(cfg);
+    cfg.wifiSSID = prefs.getString("wifiSSID", "");
+    cfg.wifiPassword = prefs.getString("wifiPass", "");
+    cfg.serverURL = prefs.getString("serverURL", "");
+    cfg.apiKey = prefs.getString("apiKey", "");
+    cfg.mqttBroker = prefs.getString("mqttBroker", "");
+    cfg.mqttPort = prefs.getUShort("mqttPort", 1883);
+    cfg.mqttClientId = prefs.getString("mqttClientId", "");
+    cfg.mqttUsername = prefs.getString("mqttUser", "");
+    cfg.mqttPassword = prefs.getString("mqttPass", "");
+    cfg.uploadInterval = prefs.getULong("uploadInt", 60000);
+    cfg.listenWindow = prefs.getULong("listenWin", 30000);
+    LOG_DEBUG("Config loaded: uploadInterval=%lu, listenWindow=%lu", cfg.uploadInterval, cfg.listenWindow);
     return true;
 }
 
 bool ConfigManager::save(const DeviceConfig& cfg) {
-    RTCMemory::saveBuffer((uint8_t*)&cfg, sizeof(cfg));
+    prefs.putString("wifiSSID", cfg.wifiSSID);
+    prefs.putString("wifiPass", cfg.wifiPassword);
+    prefs.putString("serverURL", cfg.serverURL);
+    prefs.putString("apiKey", cfg.apiKey);
+    prefs.putString("mqttBroker", cfg.mqttBroker);
+    prefs.putUShort("mqttPort", cfg.mqttPort);
+    prefs.putString("mqttClientId", cfg.mqttClientId);
+    prefs.putString("mqttUser", cfg.mqttUsername);
+    prefs.putString("mqttPass", cfg.mqttPassword);
+    prefs.putULong("uploadInt", cfg.uploadInterval);
+    prefs.putULong("listenWin", cfg.listenWindow);
+    LOG_INFO("Config saved");
     return true;
 }
 
-bool ConfigManager::downloadFromCloud() {
-    // Stub: ambil dari cloud dan simpan
-    return true;
+void ConfigManager::resetToDefault() {
+    DeviceConfig defaultCfg;
+    save(defaultCfg);
+    LOG_INFO("Config reset to default");
 }
 
-bool ConfigManager::applyConfig(const DeviceConfig& cfg) {
-    current = cfg;
-    return save(cfg);
-}
+bool ConfigManager::updateFromJSON(const String& json) {
+    DynamicJsonDocument doc(512);
+    DeserializationError err = deserializeJson(doc, json);
+    if (err) {
+        LOG_ERROR("JSON parse error: %s", err.c_str());
+        return false;
+    }
+    DeviceConfig newCfg;
+    load(newCfg); // ambil yang sekarang
+    
+    if (doc.containsKey("wifiSSID")) newCfg.wifiSSID = doc["wifiSSID"].as<String>();
+    if (doc.containsKey("wifiPassword")) newCfg.wifiPassword = doc["wifiPassword"].as<String>();
+    if (doc.containsKey("serverURL")) newCfg.serverURL = doc["serverURL"].as<String>();
+    if (doc.containsKey("apiKey")) newCfg.apiKey = doc["apiKey"].as<String>();
+    if (doc.containsKey("mqttBroker")) newCfg.mqttBroker = doc["mqttBroker"].as<String>();
+    if (doc.containsKey("mqttPort")) newCfg.mqttPort = doc["mqttPort"].as<uint16_t>();
+    if (doc.containsKey("mqttClientId")) newCfg.mqttClientId = doc["mqttClientId"].as<String>();
+    if (doc.containsKey("mqttUsername")) newCfg.mqttUsername = doc["mqttUsername"].as<String>();
+    if (doc.containsKey("mqttPassword")) newCfg.mqttPassword = doc["mqttPassword"].as<String>();
+    if (doc.containsKey("uploadInterval")) newCfg.uploadInterval = doc["uploadInterval"].as<unsigned long>();
+    if (doc.containsKey("listenWindow")) newCfg.listenWindow = doc["listenWindow"].as<unsigned long>();
 
-bool ConfigManager::rollback() {
-    // Stub
-    return false;
+    bool saved = save(newCfg);
+    if (saved) LOG_INFO("Config updated from JSON");
+    return saved;
 }

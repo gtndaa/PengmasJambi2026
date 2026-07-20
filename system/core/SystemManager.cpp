@@ -149,9 +149,8 @@ void SystemManager::storeData() {
 }
 
 void SystemManager::upload() {
-    if (lastWeather.timestamp == 0) return; // belum ada data
+    if (lastWeather.timestamp == 0) return;
 
-    // Baca konfigurasi untuk server
     DeviceConfig cfg;
     ConfigManager config;
     config.load(cfg);
@@ -163,11 +162,23 @@ void SystemManager::upload() {
         return;
     }
 
-    CloudAPI api;
-    api.begin(cfg.serverURL, cfg.apiKey);
+    WiFiClient espClient;
+    CloudAPI api(espClient);
+    // Inisialisasi dengan server URL + apiKey, dan parameter MQTT
+    api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str(),
+              cfg.mqttBroker.c_str(), cfg.mqttPort,
+              cfg.mqttClientId.c_str(),
+              cfg.mqttUsername.c_str(), cfg.mqttPassword.c_str());
+
+    // Konek MQTT (jika broker diset)
+    if (!cfg.mqttBroker.isEmpty()) {
+        api.connectMQTT();
+    }
+
+    // Upload cuaca (prioritas MQTT, fallback HTTP)
     if (api.uploadWeather(lastWeather)) {
         LOG_INFO("Upload sukses");
-        // Reset rain total setelah upload? Tergantung kebutuhan
     }
+
     wifi.disconnect();
 }

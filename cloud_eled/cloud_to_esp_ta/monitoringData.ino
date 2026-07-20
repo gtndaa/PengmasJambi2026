@@ -165,8 +165,7 @@ Serial.println("File already exists");
 file.close();
 tft.begin();
 tft.setRotation(1);
-// Initialize the I2C bus (BH1750 library doesn't do this
-automatically)
+// Initialize the I2C bus (BH1750 library doesn't do this automatically)
 Wire.begin();
 rtc.begin();
 DateTime now = rtc.now();
@@ -862,33 +861,26 @@ corner of screen
 tft.setFreeFont(FSB12); // Select Free Serif 9 point font,
 could use:
 // tft.setFreeFont(&FreeSerif9pt7b);
-tft.println(); // Free fonts plot with the baseline
-(imaginary line the letter A would sit on)
+tft.println(); // Free fonts plot with the baseline (imaginary line the letter A would sit on)
 // as the datum, so we must move the cursor down a line from
 the 0,0 position
-tft.print("Reconnecting..."); // Print the font name onto
-the TFT screen
+tft.print("Reconnecting..."); // Print the font name onto the TFT screen
 }
 void tftStartDisplay(){
 int xpos = 50;
 int ypos = 50;
 tft.fillScreen(TFT_NAVY); // Clear screen to navy background
 header("Sistem Kalender Pertanian");
-// For comaptibility with Adafruit_GFX library the text
-background is not plotted when using the print class
+// For comaptibility with Adafruit_GFX library the text background is not plotted when using the print class
 // even if we specify it.
 tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-tft.setCursor(xpos, ypos); // Set cursor near top left
-corner of screen
-tft.setFreeFont(FSB12); // Select Free Serif 9 point font,
-could use:
+tft.setCursor(xpos, ypos); // Set cursor near top left corner of screen
+tft.setFreeFont(FSB12); // Select Free Serif 9 point font, could use:
 // tft.setFreeFont(&FreeSerif9pt7b);
-tft.println(); // Free fonts plot with the baseline
-(imaginary line the letter A would sit on)
+tft.println(); // Free fonts plot with the baseline (imaginary line the letter A would sit on)
 // as the datum, so we must move the cursor down a line from
 the 0,0 position
-tft.print("AgriCal"); // Print the font name onto the TFT
-screen
+tft.print("AgriCal"); // Print the font name onto the TFT screen
 }
 void connectAWS(){
 // WiFi.mode(WIFI_STA);
@@ -899,13 +891,11 @@ void connectAWS(){
 // delay(500);
 // Serial.print(".");
 // }
-// Configure WiFiClientSecure to use the AWS IoT device
-credentials
+// Configure WiFiClientSecure to use the AWS IoT device credentials
 net.setCACert(AWS_CERT_CA);
 net.setCertificate(AWS_CERT_CRT);
 net.setPrivateKey(AWS_CERT_PRIVATE);
-// Configure WiFiClientSecure to use the AWS IoT device
-credentials
+// Configure WiFiClientSecure to use the AWS IoT device credentials
 net.setCACert(AWS_CERT_CA);
 net.setCertificate(AWS_CERT_CRT);
 net.setPrivateKey(AWS_CERT_PRIVATE);

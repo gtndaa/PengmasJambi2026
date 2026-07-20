@@ -1,15 +1,22 @@
 #pragma once
 #include <Arduino.h>
-#include "models/DeviceConfig.h"
+#include <Preferences.h>
+#include "models/DeviceConfig.h"   // buat MQTT
 
 class ConfigManager {
 public:
-    bool load(DeviceConfig& cfg);          // muat dari RTC/SD
+    ConfigManager();
+    bool begin(const char* namespaceName = "appconfig");
+    
+    // Muat/simpan konfigurasi ke struct DeviceConfig
+    bool load(DeviceConfig& cfg);
     bool save(const DeviceConfig& cfg);
-    bool downloadFromCloud();              // ambil dari CloudAPI
-    bool applyConfig(const DeviceConfig& cfg);
-    void setDefaults(DeviceConfig& cfg);
-    bool rollback();                       // pakai konfigurasi sebelumnya
+    void resetToDefault();
+    
+    // Update dari JSON string (dari cloud)
+    bool updateFromJSON(const String& json);
+
 private:
-    DeviceConfig current;
+    Preferences prefs;
+    String ns;
 };

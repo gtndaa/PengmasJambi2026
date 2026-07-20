@@ -1,32 +1,42 @@
-#include "WiFiManager.h"
+#include "WifiManager.h"
+#include "utils/Logger.h"
 
-bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeoutMs) {
+WifiManager::WifiManager() {}
+
+bool WifiManager::connect(const char* ssid, const char* password, unsigned long timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) {
+        LOG_INFO("WiFi already connected");
+        return true;
+    }
     WiFi.begin(ssid, password);
-    uint32_t start = millis();
+    LOG_INFO("Connecting to WiFi SSID: %s", ssid);
+    unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED) {
         if (millis() - start > timeoutMs) {
-            connected = false;
+            LOG_ERROR("WiFi connection timeout");
             return false;
         }
-        delay(100);
+        delay(500);
+        Serial.print(".");
     }
-    connected = true;
+    Serial.println();
+    LOG_INFO("WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
     return true;
 }
 
-void WiFiManager::disconnect() {
-    WiFi.disconnect(true);
-    connected = false;
+bool WifiManager::isConnected() const {
+    return WiFi.status() == WL_CONNECTED;
 }
 
-bool WiFiManager::isConnected() const {
-    return connected && (WiFi.status() == WL_CONNECTED);
+String WifiManager::getLocalIP() const {
+    return WiFi.localIP().toString();
 }
 
-int8_t WiFiManager::getRSSI() const {
+int WifiManager::getRSSI() const {
     return WiFi.RSSI();
 }
 
-String WiFiManager::getLocalIP() const {
-    return WiFi.localIP().toString();
+void WifiManager::disconnect() {
+    WiFi.disconnect();
+    LOG_INFO("WiFi disconnected");
 }

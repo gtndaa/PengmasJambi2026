@@ -1,15 +1,16 @@
 #pragma once
 #include <Arduino.h>
-#include <IPAddress.h>
 
 struct DeviceConfig {
-    char wifiSSID[32];
-    char wifiPassword[64];
-    char serverURL[128];
-    char apiKey[64];
-    uint32_t uploadInterval;      // ms
-    uint32_t listenWindow;        // ms
-    int32_t  timezoneOffset;      // detik
-    uint8_t  configVersion;
-    bool     useDeepSleep;
+    String wifiSSID;
+    String wifiPassword;
+    String serverURL;           // untuk HTTP getConfig
+    String apiKey;
+    String mqttBroker;
+    uint16_t mqttPort = 1883;
+    String mqttClientId;
+    String mqttUsername;
+    String mqttPassword;
+    unsigned long uploadInterval = 60000;   // ms
+    unsigned long listenWindow = 30000;     // ms
 };
