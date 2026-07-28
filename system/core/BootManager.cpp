@@ -1,7 +1,4 @@
-#include "BootManager.h"
-#include "storage/RTCMemory.h"
-#include "utils/Logger.h"
-#include "config.h"
+#include "headers.h"
 
 void BootManager::init() {
     RTCMemory::init();

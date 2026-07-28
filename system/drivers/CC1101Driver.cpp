@@ -1,6 +1,4 @@
-#include "CC1101Driver.h"
-#include "pins.h"
-#include "constants.h"
+#include "headers.h"
 
 static volatile uint32_t pulseBuf[MAX_PULSES];
 static volatile uint16_t pulseIdx = 0;

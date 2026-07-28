@@ -1,6 +1,5 @@
-#include "ConfigManager.h"
+#include "headers.h"
 #include <ArduinoJson.h>
-#include "utils/Logger.h"
 
 ConfigManager::ConfigManager() {}
 

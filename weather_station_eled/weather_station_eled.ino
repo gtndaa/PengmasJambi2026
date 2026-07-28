@@ -8,6 +8,8 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
 
   initRTC();
+  DateTime now = rtc.now();
+
   initLux();
   initCC1101();
 

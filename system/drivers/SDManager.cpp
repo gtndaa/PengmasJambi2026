@@ -1,6 +1,4 @@
-#include "SDManager.h"
-#include "pins.h"
-#include "constants.h"
+#include "headers.h"
 #include <SPI.h>
 
 bool SDManager::begin() {

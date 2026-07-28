@@ -1,6 +1,4 @@
-#include "WeatherDecoder.h"
-#include "constants.h"
-#include "config.h"
+#include "headers.h"
 
 uint16_t WeatherDecoder::pulsesToBits(uint32_t* pulses, uint16_t count,
                                       uint8_t* bits, uint16_t maxBits) {
