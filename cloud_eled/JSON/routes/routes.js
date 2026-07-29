@@ -9,7 +9,10 @@ const { getAllKegiatan } = require('../controller/Kalender');
 const { authenticateJWT } = require('../middleware/tokenVerification');
 
 // Import Controller Sensor (Baru)
-const { getLatestSensorData } = require('../controller/SensorController');
+const {
+  getLatestSensorData,
+  tambahSensorData
+} = require('../controller/SensorController');
 
 // Home Route
 router.get('/', async (req, res) => {
@@ -35,5 +38,6 @@ router.get('/allkegiatan', getAllKegiatan);
 
 // Route Sensor (Baru) -> Ini yang akan dipanggil Flutter
 router.get('/sensordata', getLatestSensorData);
+router.post('/postsensordata', tambahSensorData);
 
 module.exports = { router };
