@@ -63,10 +63,10 @@ void initRTC() {
   }
   rtcOK = true;
   if (rtc.lostPower()) {
-    // Untuk set manual: rtc.adjust(DateTime(YYYY, M, D, H, Min, S));
     Serial.println(F("[WARN] RTC kehilangan daya, set ke waktu kompilasi"));
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
+  // rtc.adjust(DateTime(2026, 7, 27, 22, 30, 0));
   Serial.printf("[OK] DS3231 — %s\n", getDateTimeStr().c_str());
   Serial.printf("[OK] Suhu RTC : %.2f °C\n", rtc.getTemperature());
 }

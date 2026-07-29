@@ -1,7 +1,4 @@
-#include "RTCManager.h"
-#include "pins.h"
-#include "config.h"
-
+#include "headers.h"
 static const char* DAYS[] = {
     "Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"
 };

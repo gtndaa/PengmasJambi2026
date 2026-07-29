@@ -29,7 +29,7 @@ void printWeather(uint8_t *d, uint8_t len) {
   String isoStr    = getISOStr();
 
   // Display
-  Serial.println(F("\n╔══════════════════════════════════════╗"));
+  /*Serial.println(F("\n╔══════════════════════════════════════╗"));
   Serial.println(F(  "║        WEATHER STATION ELED          ║"));
   Serial.println(F(  "╚══════════════════════════════════════╝"));
   Serial.printf(     "  Waktu      : %s\n",         dtStr.c_str());
@@ -51,8 +51,8 @@ void printWeather(uint8_t *d, uint8_t len) {
   Serial.printf(     "  Light      : %.1f lux\n",   luxValue);
   Serial.println(F(  "══════════════════════════════════════"));
 
-  // JSON
-  Serial.println(F("[JSON]"));
+  // JSON 
+  Serial.println(F("[JSON]"));*/
   Serial.print(F("{"));
   Serial.printf("\"datetime\":\"%s\",",  isoStr.c_str());
   Serial.printf("\"id\":\"0x%02X\",",    sensorID);

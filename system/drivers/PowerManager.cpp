@@ -1,5 +1,4 @@
-#include "PowerManager.h"
-#include "pins.h"
+#include "headers.h"
 #include <esp_sleep.h>
 #include <driver/adc.h>
 

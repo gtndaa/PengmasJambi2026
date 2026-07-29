@@ -1,18 +1,4 @@
-#include "SystemManager.h"
-#include "core/BootManager.h"
-#include "core/Scheduler.h"
-#include "radio/CC1101Driver.h"
-#include "radio/WeatherDecoder.h"
-#include "sensors/LightSensor.h"
-#include "rtc/RTCManager.h"
-#include "storage/SDManager.h"
-#include "cloud/WiFiManager.h"
-#include "cloud/CloudAPI.h"
-#include "cloud/ConfigManager.h"
-#include "power/PowerManager.h"
-#include "utils/Logger.h"
-#include "utils/Helpers.h"
-#include "config.h"
+#include "headers.h"
 
 WeatherData SystemManager::lastWeather;
 DeviceStatus SystemManager::status;

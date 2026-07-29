@@ -1,6 +1,4 @@
-#include "LightSensor.h"
-#include "pins.h"
-#include "config.h"
+#include "headers.h"
 
 bool LightSensor::begin() {
     if (sensor.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {

@@ -1,7 +1,4 @@
-#include "Scheduler.h"
-#include "config.h"
-#include "power/PowerManager.h"
-#include "utils/Logger.h"
+#include "headers.h"
 
 uint32_t Scheduler::lastListenTime = 0;
 uint32_t Scheduler::lastUploadTime = 0;
