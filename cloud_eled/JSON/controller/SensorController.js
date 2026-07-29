@@ -1,11 +1,10 @@
-// File: controller/SensorController.js
 const { SensorData } = require('../models/SensorData');
 
+// 1. Fungsi GET: Mengambil 1 data paling terakhir dimasukkan (paling baru)
 const getLatestSensorData = async (req, res) => {
     try {
-        // Mengambil 1 data paling terakhir dimasukkan (paling baru)
         const latestData = await SensorData.findOne({
-            order: [['created_at', 'DESC']]
+            order: [['logId', 'DESC']] // Diubah ke logId DESC agar data terbaru di atas
         });
 
         if (!latestData) {
@@ -22,4 +21,56 @@ const getLatestSensorData = async (req, res) => {
     }
 };
 
-module.exports = { getLatestSensorData };
+// 2. Fungsi POST: Menerima data JSON dari ESP32 / Postman
+const tambahSensorData = async (req, res) => {
+    try {
+        const {
+            datetime,
+            id,
+            ch,
+            batt,
+            temp_out,
+            hum_out,
+            wind_speed,
+            wind_gust,
+            wind_dir,
+            wind_deg,
+            rain_delta,
+            rain_total,
+            rain_raw,
+            light_lux
+        } = req.body;
+
+        const newData = await SensorData.create({
+            datetime,
+            id,
+            ch,
+            batt,
+            temp_out,
+            hum_out,
+            wind_speed,
+            wind_gust,
+            wind_dir,
+            wind_deg,
+            rain_delta,
+            rain_total,
+            rain_raw,
+            light_lux
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Data sensor berhasil disimpan!",
+            data: newData
+        });
+    } catch (error) {
+        console.error("Error simpan data sensor:", error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal menyimpan data sensor",
+            detail: error.message
+        });
+    }
+};
+
+module.exports = { getLatestSensorData, tambahSensorData };
