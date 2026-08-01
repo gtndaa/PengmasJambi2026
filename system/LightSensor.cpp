@@ -21,3 +21,18 @@ float LightSensor::getLux() const {
 void LightSensor::setInterval(uint32_t ms) {
     interval = ms;
 }
+
+float LightSensor::readOnce() {
+    // Dipakai saat siklus bangun singkat: tidak menunggu jadwal `interval`,
+    // langsung minta satu pembacaan agar wake time tetap pendek.
+    float val = sensor.readLightLevel();
+    if (val >= 0) {
+        lux = val;
+        lastRead = millis();
+    }
+    return lux;
+}
+
+void LightSensor::powerDown() {
+    sensor.powerDown();
+}

@@ -48,6 +48,19 @@ void WeatherDecoder::resetRainCounter(uint8_t initialCounter) {
     rainAccumulated = 0.0f;
 }
 
+void WeatherDecoder::loadRainStateFromRTC() {
+    // Karena tiap siklus bangun adalah "boot" baru bagi objek ini,
+    // state akumulasi hujan harus dipulihkan dari RTC memory supaya
+    // tidak reset ke 0 setiap kali deep sleep.
+    rainCounterPrev = RTCMemory::getRainCounterPrev();
+    rainAccumulated = RTCMemory::getRainAccumulated();
+}
+
+void WeatherDecoder::saveRainStateToRTC() {
+    RTCMemory::setRainCounterPrev(rainCounterPrev);
+    RTCMemory::setRainAccumulated(rainAccumulated);
+}
+
 bool WeatherDecoder::decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulatedRef) {
     if (len < 10) return false;
 

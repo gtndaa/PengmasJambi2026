@@ -1,5 +1,4 @@
-#include "WifiManager.h"
-#include "utils/Logger.h"
+#include "headers.h"
 
 WifiManager::WifiManager() {}
 

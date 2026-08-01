@@ -1,7 +1,6 @@
-#include "CloudAPI.h"
+#include "headers.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "utils/Logger.h"
 
 CloudAPI* CloudAPI::instance = nullptr;
 

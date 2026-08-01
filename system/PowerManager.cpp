@@ -14,6 +14,16 @@ float PowerManager::readSuperCapVoltage() {
     return vin;
 }
 
+float PowerManager::readBatteryVoltage() {
+    // Board ini tidak punya pembagi tegangan baterai terpisah dari
+    // supercap, jadi dipetakan ke pin/rumus yang sama. Ganti BATTERY_PIN
+    // dan faktor pembagi di headers.h jika board revisi berikutnya
+    // punya jalur ADC baterai sendiri.
+    int val = analogRead(BATTERY_PIN);
+    float vin = ((val / 4095.0) * 3.3) / 0.18;
+    return vin;
+}
+
 void PowerManager::prepareDeepSleep(uint64_t wakeUpTimeUs) {
     esp_sleep_enable_timer_wakeup(wakeUpTimeUs);
 }

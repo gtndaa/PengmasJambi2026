@@ -92,3 +92,13 @@ void CC1101Driver::disableInterrupt() {
 void CC1101Driver::watchdogReset() {
     ELECHOUSE_cc1101.SetRx();
 }
+
+void CC1101Driver::sleepRadio() {
+    // Lepas interrupt dulu supaya tidak ada ISR nyasar saat CS/GDO
+    // dalam kondisi transisi menuju sleep, lalu kirim CC1101 ke SPWD
+    // (power-down state) via goSleep() -- ini konsumsi arusnya jauh
+    // lebih rendah dibanding sekadar idle (setSidle), cocok dipasangkan
+    // dengan ESP32 deep sleep karena keduanya sama-sama nonaktif lama.
+    disableInterrupt();
+    ELECHOUSE_cc1101.goSleep();
+}
