@@ -221,6 +221,8 @@ void SystemManager::upload() {
     config.begin();
     config.load(cfg);
 
+    // Konek pakai kredensial yang sudah diketahui berhasil (tersimpan di NVS,
+    // default-nya dari secrets.h saat pertama kali boot).
     WifiManager wifi;
     if (!wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str())) {
         LOG_ERROR("Gagal konek WiFi, %d data tetap tersimpan di RTC memory untuk dicoba lagi", count);
@@ -236,6 +238,29 @@ void SystemManager::upload() {
 
     if (!cfg.mqttBroker.isEmpty()) {
         api.connectMQTT();
+    }
+
+    // Cek apakah ada SSID/password baru dari server. Jika ada dan berbeda
+    // dari yang sedang dipakai, coba pindah; kalau gagal/timeout, otomatis
+    // fallback kembali ke SSID/password lama (yang baru saja berhasil konek).
+    WifiCredentials newCreds;
+    if (api.fetchWifiCredentials(newCreds)) {
+        bool isDifferent = (newCreds.ssid != cfg.wifiSSID) ||
+                            (newCreds.password != cfg.wifiPassword);
+        if (isDifferent) {
+            bool switched = wifi.connectWithFallback(newCreds,
+                                                       cfg.wifiSSID.c_str(),
+                                                       cfg.wifiPassword.c_str());
+            if (switched) {
+                // Simpan kredensial baru sebagai kredensial yang diketahui
+                // berhasil untuk siklus-siklus berikutnya.
+                cfg.wifiSSID = newCreds.ssid;
+                cfg.wifiPassword = newCreds.password;
+                config.save(cfg);
+            }
+            // Jika gagal, wifi sudah otomatis kembali ke cfg lama di atas
+            // dan cfg tidak diubah/disimpan.
+        }
     }
 
     uint8_t sent = 0;

@@ -18,12 +18,11 @@ bool CloudAPI::begin(const char* serverURL,
     this->server = String(serverURL);
     this->apiKey = String(apiKey);
     this->mqttClientId = (mqttClientId ? String(mqttClientId) : "");
+    this->mqttUsername = (mqttUsername ? String(mqttUsername) : "");
+    this->mqttPassword = (mqttPassword ? String(mqttPassword) : "");
     
     if (mqttBroker != nullptr && strlen(mqttBroker) > 0) {
         mqttClient.setServer(mqttBroker, mqttPort);
-        if (mqttUsername && strlen(mqttUsername) > 0) {
-            mqttClient.setCredentials(mqttUsername, mqttPassword);
-        }
         mqttClient.setCallback(mqttCallback);
         LOG_INFO("MQTT client initialized: %s:%d", mqttBroker, mqttPort);
     } else {
@@ -38,7 +37,12 @@ bool CloudAPI::connectMQTT() {
             LOG_WARN("MQTT clientId not set, cannot connect");
             return false;
         }
-        bool ok = mqttClient.connect(mqttClientId.c_str());
+        bool ok;
+        if (!mqttUsername.isEmpty()) {
+            ok = mqttClient.connect(mqttClientId.c_str(), mqttUsername.c_str(), mqttPassword.c_str());
+        } else {
+            ok = mqttClient.connect(mqttClientId.c_str());
+        }
         if (ok) {
             LOG_INFO("MQTT connected as %s", mqttClientId.c_str());
             // Subscribe ke topik konfigurasi perangkat
@@ -93,38 +97,45 @@ bool CloudAPI::uploadWeather(const WeatherData& data) {
         return success;
     }
     
-    // Fallback: HTTP (jika server tidak kosong)
+    // Fallback: HTTP, format & endpoint sama dengan yang sudah diuji
+    // berhasil di esp_lambda_test (lambda_api.cpp -> postSensorData),
+    // disesuaikan dengan field backend SensorData model.
     if (server.isEmpty()) {
         LOG_ERROR("No server URL, cannot upload");
         return false;
     }
     HTTPClient http;
-    http.begin(server + "/weather");
+    String url = server + ENDPOINT_SENSOR_POST;
+    http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-API-Key", apiKey);
-    
+
     DynamicJsonDocument doc(512);
-    doc["device"] = mqttClientId; // atau device ID lain
-    doc["timestamp"] = data.timestamp;
-    doc["temp"] = data.temperature;
-    doc["hum"] = data.humidity;
+    doc["datetime"]   = Helpers::epochToDateTimeStr(data.timestamp);
+    doc["id"]         = DEVICE_ID;
+    doc["ch"]         = data.channel;
+    doc["batt"]       = data.batteryOk ? "OK" : "LOW";
+    doc["temp_out"]   = data.temperature;
+    doc["hum_out"]    = data.humidity;
     doc["wind_speed"] = data.windSpeed;
-    doc["wind_gust"] = data.windGust;
-    doc["wind_dir"] = data.windDirection;
-    doc["wind_deg"] = data.windDeg;
+    doc["wind_gust"]  = data.windGust;
+    doc["wind_dir"]   = Helpers::windDirToStr(data.windDirection);
+    doc["wind_deg"]   = data.windDeg;
     doc["rain_delta"] = data.rainDelta;
     doc["rain_total"] = data.rainTotal;
-    doc["light"] = data.light;
-    doc["batt_ok"] = data.batteryOk;
-    doc["channel"] = data.channel;
-    
+    doc["rain_raw"]   = data.rainRaw;
+    doc["light_lux"]  = data.light;
+
     String payload;
     serializeJson(doc, payload);
+    LOG_DEBUG("POST %s payload=%s", url.c_str(), payload.c_str());
+
     int code = http.POST(payload);
+    String response = http.getString();
     http.end();
-    bool success = (code == 200 || code == 201);
-    if (success) LOG_INFO("Weather uploaded via HTTP");
-    else LOG_ERROR("HTTP upload failed, code %d", code);
+
+    bool success = (code == 201);
+    if (success) LOG_INFO("Weather uploaded via HTTP (%s)", response.c_str());
+    else LOG_ERROR("HTTP upload failed, code %d, response=%s", code, response.c_str());
     return success;
 }
 
@@ -174,6 +185,50 @@ bool CloudAPI::getConfig(String& configJSON) {
         http.end();
         return false;
     }
+}
+
+bool CloudAPI::fetchWifiCredentials(WifiCredentials& creds) {
+    if (server.isEmpty()) {
+        LOG_ERROR("Server URL not set");
+        return false;
+    }
+
+    HTTPClient http;
+    String url = server + ENDPOINT_WIFI_GET;
+    http.begin(url);
+
+    int code = http.GET();
+    if (code != 200) {
+        LOG_WARN("GET %s failed, code %d", url.c_str(), code);
+        http.end();
+        return false;
+    }
+
+    String response = http.getString();
+    http.end();
+
+    DynamicJsonDocument doc(256);
+    DeserializationError err = deserializeJson(doc, response);
+    if (err) {
+        LOG_ERROR("Wifi config JSON parse error: %s", err.c_str());
+        return false;
+    }
+
+    if (!doc.containsKey("ssid") || !doc.containsKey("password")) {
+        LOG_WARN("Wifi config response missing ssid/password");
+        return false;
+    }
+
+    creds.ssid = doc["ssid"].as<String>();
+    creds.password = doc["password"].as<String>();
+
+    if (creds.ssid.isEmpty()) {
+        LOG_WARN("Wifi config ssid kosong, diabaikan");
+        return false;
+    }
+
+    LOG_INFO("Wifi config diterima dari server: ssid=%s", creds.ssid.c_str());
+    return true;
 }
 
 bool CloudAPI::subscribe(const char* topic) {
