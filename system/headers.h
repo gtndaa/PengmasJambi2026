@@ -27,11 +27,11 @@
 //  2. TIME CONFIG
 // =====================================================================
 #define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
-#define LISTEN_WINDOW_MS    30000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
-#define SLEEP_INTERVAL_MS   300000     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
+#define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
+#define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
 #define LUX_INTERVAL        2000       // ms antar pembacaan lux
 
-#define TIMEZONE_OFFSET     25200
+#define TIMEZONE_OFFSET     0
 
 // ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) -------
 // Dari analisis log rtl_433-style: sensor cuaca (id 0x22 ch4) mengirim
@@ -55,7 +55,7 @@
 #define API_KEY             "your-api-key"
 
 // Endpoint sesuai routes.js backend (JSON/routes/routes.js)
-#define ENDPOINT_SENSOR_POST   "/postsensordata"   // POST data cuaca (SensorData model)
+#define ENDPOINT_SENSOR_POST   "/sensordata"   // POST data cuaca (SensorData model)
 #define ENDPOINT_SENSOR_GET    "/sensordata"       // GET data cuaca terbaru
 #define ENDPOINT_WIFI_GET      "/wifi"             // GET konfigurasi wifi terbaru (WifiConfig model)
 
