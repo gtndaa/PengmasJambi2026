@@ -8,13 +8,13 @@ void PowerManager::begin() {
 }
 
 
-float PowerManager::readSuperCapVoltage() {
+float PowerManager::readSuperCapVoltage() const {
     int val = analogRead(SUPERCAP_PIN);
     float vin = ((val / 4095.0) * 3.3) / 0.18;
     return vin;
 }
 
-float PowerManager::readBatteryVoltage() {
+float PowerManager::readBatteryVoltage() const {
     // Board ini tidak punya pembagi tegangan baterai terpisah dari
     // supercap, jadi dipetakan ke pin/rumus yang sama. Ganti BATTERY_PIN
     // dan faktor pembagi di headers.h jika board revisi berikutnya

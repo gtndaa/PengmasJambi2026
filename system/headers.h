@@ -14,6 +14,7 @@
 #include <Preferences.h>
 #include <functional>
 #include <esp_sleep.h>
+#include "secrets.h"
 
 // =====================================================================
 //  1. IDENTITY
@@ -49,8 +50,14 @@
 // =====================================================================
 //  3. SERVER & API CONFIG
 // =====================================================================
-#define SERVER_URL          "http://api.example.com/weather"
+// URL ini sama dengan BASE_URL yang sudah diuji berhasil di esp_lambda_test.
+#define SERVER_URL          "https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws"
 #define API_KEY             "your-api-key"
+
+// Endpoint sesuai routes.js backend (JSON/routes/routes.js)
+#define ENDPOINT_SENSOR_POST   "/postsensordata"   // POST data cuaca (SensorData model)
+#define ENDPOINT_SENSOR_GET    "/sensordata"       // GET data cuaca terbaru
+#define ENDPOINT_WIFI_GET      "/wifi"             // GET konfigurasi wifi terbaru (WifiConfig model)
 
 // =====================================================================
 //  6. PINOUT CONFIGURATION
@@ -172,6 +179,16 @@ struct DeviceConfig {
     unsigned long listenWindow = LISTEN_WINDOW_MS;        // ms
 };
 
+// 4.4 WifiCredentials
+// Struct minimal, hanya ssid + password. Dipakai khusus untuk pertukaran
+// data dengan endpoint GET /wifi (backend WifiConfig model). Tidak ada
+// field lain karena URL server dan konfigurasi lain tidak pernah diatur
+// dari jarak jauh lewat jalur ini.
+struct WifiCredentials {
+    String ssid;
+    String password;
+};
+
 // =====================================================================
 //  5. CLASS DECLARATIONS
 // =====================================================================
@@ -229,7 +246,8 @@ public:
     static float getRainAccumulated();
     static void setRainAccumulated(float v);
 
-private:
+    // Struct internal harus public agar bisa dideklarasikan sebagai
+    // RTC_DATA_ATTR static RTCMemory::RTCData di file .cpp (di luar kelas).
     struct RTCData {
         uint32_t bootCount;
         uint32_t wakeCounter;
@@ -249,6 +267,8 @@ private:
         uint8_t rainCounterPrev;
         float   rainAccumulated;
     };
+
+private:
     static RTCData* rtcData;
 };
 
@@ -345,8 +365,8 @@ private:
 class PowerManager {
 public:
     void begin();
-    float readBatteryVoltage();      // volt
-    float readSuperCapVoltage();     // volt
+    float readBatteryVoltage() const;      // volt
+    float readSuperCapVoltage() const;     // volt
     void prepareDeepSleep(uint64_t wakeUpTimeUs);
     void deepSleepNow();
     bool isLowPower() const;
@@ -378,6 +398,11 @@ public:
     bool uploadWeather(const WeatherData& data);
     bool uploadStatus(const DeviceStatus& status);
     bool getConfig(String& configJSON);
+
+    // Ambil kredensial wifi terbaru dari endpoint GET /wifi (backend
+    // WifiConfig model). Hanya berisi ssid + password.
+    bool fetchWifiCredentials(WifiCredentials& creds);
+
     bool subscribe(const char* topic);
     void setConfigCallback(ConfigCallback cb);
     void loop();
@@ -385,8 +410,10 @@ public:
 private:
     String server;
     String apiKey;
-    PubSubClient mqttClient;
+    mutable PubSubClient mqttClient;
     String mqttClientId;
+    String mqttUsername;
+    String mqttPassword;
     ConfigCallback configCb;
     static CloudAPI* instance;
     static void mqttCallback(char* topic, byte* payload, unsigned int length);
@@ -412,6 +439,17 @@ class WifiManager {
 public:
     WifiManager();
     bool connect(const char* ssid, const char* password, unsigned long timeoutMs = 15000);
+
+    // Coba ganti koneksi ke kredensial baru (mis. dari server). Jika
+    // gagal terhubung sampai timeout, otomatis kembali (fallback) ke
+    // ssid/password lama yang sudah terbukti berhasil.
+    // Return true jika berhasil pindah ke kredensial BARU.
+    // Return false jika gagal & sudah kembali memakai kredensial lama.
+    bool connectWithFallback(const WifiCredentials& newCreds,
+                              const char* fallbackSsid,
+                              const char* fallbackPassword,
+                              unsigned long timeoutMs = 15000);
+
     bool isConnected() const;
     String getLocalIP() const;
     int getRSSI() const;
@@ -425,6 +463,14 @@ public:
     static uint32_t getEpochFromRTC();   // memerlukan RTCManager
     static float mapf(float x, float in_min, float in_max, float out_min, float out_max);
     static String toHex(uint8_t* data, uint8_t len);
+
+    // Format "YYYY-MM-DD HH:MM:SS" dari epoch, sesuai format field
+    // "datetime" pada backend SensorData (lihat esp_lambda_test payload).
+    static String epochToDateTimeStr(uint32_t epoch);
+
+    // Konversi index arah angin (0-15) ke string kompas (N, NNE, NE, ...),
+    // sesuai field "wind_dir" (String) pada backend SensorData.
+    static const char* windDirToStr(uint8_t dirIndex);
 };
 
 // --------------------------- 5.13 SystemManager ----------------------

@@ -10,9 +10,9 @@ bool ConfigManager::begin(const char* namespaceName) {
 }
 
 bool ConfigManager::load(DeviceConfig& cfg) {
-    cfg.wifiSSID = prefs.getString("wifiSSID", "");
-    cfg.wifiPassword = prefs.getString("wifiPass", "");
-    cfg.serverURL = prefs.getString("serverURL", "");
+    cfg.wifiSSID = prefs.getString("wifiSSID", DEFAULT_WIFI_SSID);
+    cfg.wifiPassword = prefs.getString("wifiPass", DEFAULT_WIFI_PASSWORD);
+    cfg.serverURL = prefs.getString("serverURL", SERVER_URL);
     cfg.apiKey = prefs.getString("apiKey", "");
     cfg.mqttBroker = prefs.getString("mqttBroker", "");
     cfg.mqttPort = prefs.getUShort("mqttPort", 1883);
