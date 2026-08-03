@@ -87,7 +87,7 @@ bool LambdaAPI::postSensorData()
 {
     HTTPClient http;
 
-    String url = String(BASE_URL) + "/postsensordata";
+    String url = String(BASE_URL) + "/sensordata";
 
     Serial.println();
     Serial.println("==============================");
