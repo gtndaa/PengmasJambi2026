@@ -1,6 +1,8 @@
 #ifndef LAMBDA_API_H
 #define LAMBDA_API_H
 
+#include "device_config.h"
+
 class LambdaAPI
 {
 public:
@@ -10,6 +12,8 @@ public:
     bool getLatestSensor();
 
     bool postSensorData();
+    
+    bool getDeviceConfig(DeviceConfig &config);
 
 };
 

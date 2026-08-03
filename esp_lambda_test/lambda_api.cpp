@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 #include "config.h"
 
@@ -136,4 +137,66 @@ bool LambdaAPI::postSensorData()
     http.end();
 
     return (httpCode == 201);
+}
+
+bool LambdaAPI::getDeviceConfig(DeviceConfig &config)
+{
+    HTTPClient http;
+
+    String url = String(BASE_URL) + "/device-config";
+
+    Serial.println();
+    Serial.println("==============================");
+    Serial.println("GET Device Config");
+    Serial.println(url);
+    Serial.println("==============================");
+
+    http.begin(url);
+
+    int httpCode = http.GET();
+
+    if (httpCode != 200)
+    {
+        Serial.print("HTTP Error : ");
+        Serial.println(httpCode);
+
+        http.end();
+
+        return false;
+    }
+
+    String payload = http.getString();
+
+    Serial.println(payload);
+
+    JsonDocument doc;
+
+    DeserializationError err = deserializeJson(doc, payload);
+
+    if (err)
+    {
+        Serial.println("JSON Parse Error");
+
+        http.end();
+
+        return false;
+    }
+
+    config.wifiSSID = doc["wifiSSID"].as<String>();
+
+    config.wifiPassword = doc["wifiPassword"].as<String>();
+
+    config.uploadInterval = doc["uploadInterval"];
+
+    config.listenWindow = doc["listenWindow"];
+
+    config.timezoneOffset = doc["timezoneOffset"];
+
+    config.configVersion = doc["configVersion"];
+
+    config.useDeepSleep = doc["useDeepSleep"];
+
+    http.end();
+
+    return true;
 }

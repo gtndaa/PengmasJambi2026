@@ -1,9 +1,11 @@
 #include "config.h"
 #include "wifi_manager.h"
 #include "lambda_api.h"
+#include "device_config.h"
 
 WifiManager wifi;
 LambdaAPI api;
+DeviceConfig config;
 
 unsigned long lastPrint = 0;
 unsigned long lastGet = 0;
@@ -20,6 +22,43 @@ void setup()
     Serial.println("==============================");
 
     wifi.begin();
+
+    if(api.getDeviceConfig(config))
+    {
+        Serial.println();
+
+        Serial.println("===== DEVICE CONFIG =====");
+
+        Serial.print("SSID : ");
+
+        Serial.println(config.wifiSSID);
+
+        Serial.print("Password : ");
+
+        Serial.println(config.wifiPassword);
+
+        Serial.print("Upload Interval : ");
+
+        Serial.println(config.uploadInterval);
+
+        Serial.print("Listen Window : ");
+
+        Serial.println(config.listenWindow);
+
+        Serial.print("Timezone : ");
+
+        Serial.println(config.timezoneOffset);
+
+        Serial.print("Version : ");
+
+        Serial.println(config.configVersion);
+
+        Serial.print("Deep Sleep : ");
+
+        Serial.println(config.useDeepSleep);
+
+        Serial.println("=========================");
+    }
 
     api.begin();
 
