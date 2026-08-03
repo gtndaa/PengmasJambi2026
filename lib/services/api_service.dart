@@ -13,7 +13,7 @@ class ApiService {
       'https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws';
 
   // =====================================================
-  // DATA USER YANG SEDANG LOGIN
+  // USER YANG SEDANG LOGIN
   // =====================================================
 
   static UserModel? _currentUser;
@@ -132,7 +132,7 @@ class ApiService {
         response.body,
       );
 
-      final bool success =
+      final success =
           response.statusCode >= 200 &&
               response.statusCode <
                   300 &&
@@ -150,10 +150,7 @@ class ApiService {
         };
       }
 
-      // Data login dapat berada pada:
-      // loginResult, data, atau langsung pada response.
-
-      dynamic userData =
+      final dynamic userData =
           data['loginResult'] ??
               data['data'] ??
               data;
@@ -264,7 +261,7 @@ class ApiService {
   }
 
   // =====================================================
-  // KIRIM KONFIGURASI WIFI KE CLOUD
+  // KIRIM KONFIGURASI WIFI
   // =====================================================
 
   Future<Map<String, dynamic>>
@@ -287,12 +284,19 @@ class ApiService {
       ),
     );
 
+    // Menampilkan data pada Debug Console
     print(
       '================================',
     );
 
     print(
-      'DEVICE CONFIG RESPONSE',
+      'KONFIGURASI YANG DIKIRIM',
+    );
+
+    print(
+      jsonEncode(
+        config,
+      ),
     );
 
     print(
@@ -301,7 +305,7 @@ class ApiService {
     );
 
     print(
-      'BODY: '
+      'RESPONSE: '
       '${response.body}',
     );
 
@@ -341,7 +345,7 @@ class ApiService {
   }
 
   // =====================================================
-  // HELPER UNTUK MEMBACA RESPONSE JSON
+  // MEMBACA RESPONSE JSON
   // =====================================================
 
   Map<String, dynamic>
