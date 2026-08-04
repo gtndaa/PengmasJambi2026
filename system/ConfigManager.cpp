@@ -21,7 +21,11 @@ bool ConfigManager::load(DeviceConfig& cfg) {
     cfg.mqttPassword = prefs.getString("mqttPass", "");
     cfg.uploadInterval = prefs.getULong("uploadInt", 60000);
     cfg.listenWindow = prefs.getULong("listenWin", 30000);
-    LOG_DEBUG("Config loaded: uploadInterval=%lu, listenWindow=%lu", cfg.uploadInterval, cfg.listenWindow);
+    cfg.sleepInterval = prefs.getULong("sleepInt", SLEEP_INTERVAL_MS);
+    cfg.useDeepSleep = prefs.getBool("useDeepSlp", true);
+    cfg.configVersion = prefs.getUInt("cfgVersion", 0);
+    LOG_DEBUG("Config loaded: uploadInterval=%lu, listenWindow=%lu, configVersion=%u",
+               cfg.uploadInterval, cfg.listenWindow, (unsigned)cfg.configVersion);
     return true;
 }
 
@@ -37,7 +41,10 @@ bool ConfigManager::save(const DeviceConfig& cfg) {
     prefs.putString("mqttPass", cfg.mqttPassword);
     prefs.putULong("uploadInt", cfg.uploadInterval);
     prefs.putULong("listenWin", cfg.listenWindow);
-    LOG_INFO("Config saved");
+    prefs.putULong("sleepInt", cfg.sleepInterval);
+    prefs.putBool("useDeepSlp", cfg.useDeepSleep);
+    prefs.putUInt("cfgVersion", cfg.configVersion);
+    LOG_INFO("Config saved (configVersion=%u)", (unsigned)cfg.configVersion);
     return true;
 }
 

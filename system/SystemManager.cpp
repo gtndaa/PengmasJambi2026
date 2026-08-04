@@ -55,6 +55,11 @@ void SystemManager::init() {
 void SystemManager::run() {
     packetReceivedThisCycle = false;
 
+    DeviceConfig cfg;
+    ConfigManager config;
+    config.begin();
+    config.load(cfg);
+
     RTCManager rtc;
     s_rtcOk = rtc.begin() && rtc.isOK();
     status.rtcPresent = s_rtcOk;
@@ -80,7 +85,9 @@ void SystemManager::run() {
         // Belum sinkron / RTC tidak tersedia / terlalu banyak paket
         // hilang berturut-turut -> dengar penuh 1 periode transmisi
         // untuk menangkap paket pertama dan membangun ulang sinkronisasi.
-        listenMs = LISTEN_WINDOW_MS;
+        // Pakai cfg.listenWindow (bisa diatur dari server lewat GET
+        // /config), bukan macro tetap, supaya config remote berpengaruh.
+        listenMs = cfg.listenWindow;
         LOG_INFO("Mode sinkronisasi ulang: dengar penuh %lu ms", (unsigned long)listenMs);
     }
 
@@ -88,7 +95,7 @@ void SystemManager::run() {
         receiveWeather(listenMs);
     }
 
-    readLight();
+    readLight(light);
 
     // Simpan salinan lokal ke SD sebagai backup (opsional, tidak
     // menggagalkan siklus jika SD tidak ada).
@@ -192,11 +199,8 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
     radio.watchdogReset();
 }
 
-void SystemManager::readLight() {
-    LightSensor light;
-    if (light.begin()) {
-        lastWeather.light = light.readOnce();
-    }
+void SystemManager::readLight(LightSensor& light) {
+    lastWeather.light = light.readOnce();
 }
 
 void SystemManager::storeData() {
@@ -221,11 +225,33 @@ void SystemManager::upload() {
     config.begin();
     config.load(cfg);
 
+    // SD dipakai sebagai penyimpanan PERSISTEN untuk data yang gagal
+    // terkirim: beda dengan RTC memory yang hilang kalau ESP32 benar-benar
+    // mati/reset total, file di SD tetap ada sampai data itu sukses masuk
+    // ke database server.
+    SDManager sd;
+    bool sdReady = sd.begin() && sd.isPresent();
+    status.sdCardPresent = sdReady;
+
     // Konek pakai kredensial yang sudah diketahui berhasil (tersimpan di NVS,
     // default-nya dari secrets.h saat pertama kali boot).
     WifiManager wifi;
     if (!wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str())) {
-        LOG_ERROR("Gagal konek WiFi, %d data tetap tersimpan di RTC memory untuk dicoba lagi", count);
+        LOG_ERROR("Gagal konek WiFi");
+        if (sdReady) {
+            // Pindahkan semua data yang baru terkumpul ke SD supaya tidak
+            // hilang walau terjadi reset/mati total sebelum sempat konek
+            // lagi ke WiFi.
+            uint8_t moved = 0;
+            for (uint8_t i = 0; i < count; i++) {
+                WeatherData d;
+                if (RTCMemory::getPending(i, d) && sd.queuePush(d)) moved++;
+            }
+            RTCMemory::clearPending();
+            LOG_WARN("%d/%d data dipindah ke SD (gagal WiFi), buffer RTC dikosongkan", moved, count);
+        } else {
+            LOG_WARN("SD tidak tersedia, %d data tetap di RTC memory (berisiko hilang jika reset total)", count);
+        }
         return;
     }
 
@@ -240,60 +266,148 @@ void SystemManager::upload() {
         api.connectMQTT();
     }
 
-    // Cek apakah ada SSID/password baru dari server. Jika ada dan berbeda
-    // dari yang sedang dipakai, coba pindah; kalau gagal/timeout, otomatis
-    // fallback kembali ke SSID/password lama (yang baru saja berhasil konek).
-    WifiCredentials newCreds;
-    if (api.fetchWifiCredentials(newCreds)) {
-        bool isDifferent = (newCreds.ssid != cfg.wifiSSID) ||
-                            (newCreds.password != cfg.wifiPassword);
-        if (isDifferent) {
-            bool switched = wifi.connectWithFallback(newCreds,
-                                                       cfg.wifiSSID.c_str(),
-                                                       cfg.wifiPassword.c_str());
-            if (switched) {
-                // Simpan kredensial baru sebagai kredensial yang diketahui
-                // berhasil untuk siklus-siklus berikutnya.
-                cfg.wifiSSID = newCreds.ssid;
-                cfg.wifiPassword = newCreds.password;
-                config.save(cfg);
+    // ------------------------------------------------------------------
+    // Sinkronisasi config dari server (GET /config), berbasis configVersion:
+    //
+    //  - configVersion==0 di lokal artinya BELUM PERNAH sinkron sama
+    //    sekali (first init) -> hanya catat versi server, JANGAN ubah
+    //    config lain dulu.
+    //  - Kalau sudah pernah sinkron dan versi server BERBEDA dari yang
+    //    tersimpan -> ambil config baru, terapkan tiap field yang beda.
+    //  - Kalau versi sama -> tidak perlu apa-apa (skip diam-diam, tidak
+    //    log tiap siklus supaya tidak spam).
+    //  - WiFi (ssid/password) diperlakukan khusus: dicoba konek dulu via
+    //    connectWithFallback(); hanya dipakai permanen kalau berhasil
+    //    connect. Kalau gagal, tetap pakai ssid/password lama.
+    // ------------------------------------------------------------------
+    RemoteConfig remote;
+    if (api.fetchRemoteConfig(remote) && remote.hasConfigVersion) {
+        if (cfg.configVersion == 0) {
+            // First init: cuma catat baseline versi, config lain dibiarkan.
+            cfg.configVersion = remote.configVersion;
+            config.save(cfg);
+            LOG_INFO("Config version awal dicatat: v%u (konfigurasi lain belum diubah)",
+                      (unsigned)cfg.configVersion);
+        } else if (remote.configVersion != cfg.configVersion) {
+            LOG_INFO("Config version server berubah (v%u -> v%u), sinkronisasi...",
+                      (unsigned)cfg.configVersion, (unsigned)remote.configVersion);
+            bool changed = false;
+
+            // --- WiFi: tes konek dulu sebelum dipakai permanen ---
+            bool wifiDifferent = !remote.ssid.isEmpty() &&
+                                  ((remote.ssid != cfg.wifiSSID) || (remote.password != cfg.wifiPassword));
+            if (wifiDifferent) {
+                WifiCredentials newCreds;
+                newCreds.ssid = remote.ssid;
+                newCreds.password = remote.password;
+                bool switched = wifi.connectWithFallback(newCreds,
+                                                           cfg.wifiSSID.c_str(),
+                                                           cfg.wifiPassword.c_str());
+                if (switched) {
+                    cfg.wifiSSID = remote.ssid;
+                    cfg.wifiPassword = remote.password;
+                    changed = true;
+                    LOG_INFO("WiFi diganti ke SSID baru: %s", remote.ssid.c_str());
+                } else {
+                    LOG_WARN("SSID baru (%s) gagal dihubungi, tetap pakai SSID lama: %s",
+                              remote.ssid.c_str(), cfg.wifiSSID.c_str());
+                }
             }
-            // Jika gagal, wifi sudah otomatis kembali ke cfg lama di atas
-            // dan cfg tidak diubah/disimpan.
+
+            // --- Field lain: langsung diterapkan kalau beda (tidak
+            //     berisiko memutus konektivitas seperti wifi) ---
+            if (remote.uploadInterval != 0 && remote.uploadInterval != cfg.uploadInterval) {
+                cfg.uploadInterval = remote.uploadInterval; changed = true;
+            }
+            if (remote.listenWindow != 0 && remote.listenWindow != cfg.listenWindow) {
+                cfg.listenWindow = remote.listenWindow; changed = true;
+            }
+            if (remote.sleepInterval != 0 && remote.sleepInterval != cfg.sleepInterval) {
+                cfg.sleepInterval = remote.sleepInterval; changed = true;
+            }
+            if (remote.useDeepSleep != cfg.useDeepSleep) {
+                cfg.useDeepSleep = remote.useDeepSleep; changed = true;
+            }
+
+            // Versi dicatat sebagai "sudah diproses" walau wifi gagal
+            // switch, supaya tidak diulang-ulang tes tiap siklus di
+            // versi yang sama. Kalau server memang mau device retry
+            // terus, server perlu menaikkan configVersion lagi.
+            cfg.configVersion = remote.configVersion;
+            config.save(cfg);
+            LOG_INFO("Config version sekarang: v%u (%s)",
+                      (unsigned)cfg.configVersion,
+                      changed ? "ada perubahan diterapkan" : "tidak ada field lain yang berubah");
         }
+        // remote.configVersion == cfg.configVersion -> tidak ada perubahan, lewati diam-diam.
     }
 
+    // 1) Kirim data yang baru terkumpul di siklus ini (RTC memory).
     uint8_t sent = 0;
     for (uint8_t i = 0; i < count; i++) {
         WeatherData d;
         if (!RTCMemory::getPending(i, d)) continue;
-        if (api.uploadWeather(d)) sent++;
+        if (api.uploadWeather(d)) {
+            sent++;
+        } else if (sdReady) {
+            // Gagal terkirim -> simpan ke SD, dicoba lagi di siklus
+            // upload berikutnya (sesuai interval kirim), bukan hilang.
+            sd.queuePush(d);
+        }
+    }
+    uint8_t unsent = count - sent;
+
+    // 2) Coba kirim ulang antrian LAMA di SD (data dari siklus-siklus
+    //    sebelumnya yang gagal terkirim). Yang sukses (masuk database)
+    //    otomatis dihapus dari SD oleh queueFlush(); yang masih gagal
+    //    tetap tersimpan untuk dicoba lagi di interval berikutnya.
+    uint16_t sdSent = 0, sdRemaining = 0;
+    if (sdReady) {
+        sd.queueFlush(api, sdSent, sdRemaining);
     }
 
     status.wifiRSSI = (int8_t)wifi.getRSSI();
     api.uploadStatus(status);
 
-    if (sent == count) {
+    if (unsent == 0) {
         RTCMemory::clearPending();
-        LOG_INFO("Upload sukses: %d data terkirim, buffer RTC dikosongkan", sent);
+        LOG_INFO("Upload sukses: %d/%d data terkirim langsung", sent, count);
+    } else if (sdReady) {
+        // Sisa yang gagal sudah aman tersalin ke SD di atas, RTC memory
+        // boleh dikosongkan.
+        RTCMemory::clearPending();
+        LOG_WARN("Upload sebagian: %d/%d terkirim langsung, %d dipindah ke SD", sent, count, unsent);
     } else {
-        LOG_WARN("Upload sebagian: %d/%d terkirim, sisanya tetap di buffer", sent, count);
+        // Tanpa SD, satu-satunya tempat data tersisa adalah RTC memory
+        // (berisiko hilang jika terjadi reset total) -> jangan dikosongkan
+        // supaya masih ada kesempatan retry di siklus berikutnya.
+        LOG_WARN("Upload sebagian: %d/%d terkirim, SD tidak tersedia, %d tetap di RTC memory", sent, count, unsent);
+    }
+
+    if (sdSent > 0 || sdRemaining > 0) {
+        LOG_INFO("Antrian SD: %u data lama terkirim & dihapus, %u masih tertunda", sdSent, sdRemaining);
     }
 
     wifi.disconnect();
 }
 
 uint32_t SystemManager::computeNextSleepMs() {
-    // Belum sinkron atau RTC bermasalah -> pakai fallback interval tetap,
-    // dan biarkan siklus berikutnya mencoba sinkronisasi ulang.
+    DeviceConfig cfg;
+    ConfigManager config;
+    config.begin();
+    config.load(cfg);
+
+    // Belum sinkron atau RTC bermasalah -> pakai fallback interval yang
+    // bisa diatur dari server (cfg.sleepInterval, GET /config), dan
+    // biarkan siklus berikutnya mencoba sinkronisasi ulang.
     if (!s_rtcOk || !RTCMemory::isSynced()) {
-        LOG_INFO("Belum sinkron, sleep fallback %lu ms", (unsigned long)SLEEP_INTERVAL_MS);
-        return SLEEP_INTERVAL_MS;
+        LOG_INFO("Belum sinkron, sleep fallback %lu ms", (unsigned long)cfg.sleepInterval);
+        return cfg.sleepInterval;
     }
 
     RTCManager rtc;
     if (!rtc.begin() || !rtc.isOK()) {
-        return SLEEP_INTERVAL_MS;
+        return cfg.sleepInterval;
     }
 
     uint32_t now = rtc.now().unixtime();

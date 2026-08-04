@@ -166,35 +166,14 @@ bool CloudAPI::uploadStatus(const DeviceStatus& status) {
     return false;
 }
 
-bool CloudAPI::getConfig(String& configJSON) {
-    if (server.isEmpty()) {
-        LOG_ERROR("Server URL not set");
-        return false;
-    }
-    HTTPClient http;
-    http.begin(server + "/config");
-    http.addHeader("X-API-Key", apiKey);
-    int code = http.GET();
-    if (code == 200) {
-        configJSON = http.getString();
-        LOG_INFO("Config retrieved via HTTP");
-        http.end();
-        return true;
-    } else {
-        LOG_ERROR("HTTP getConfig failed, code %d", code);
-        http.end();
-        return false;
-    }
-}
-
-bool CloudAPI::fetchWifiCredentials(WifiCredentials& creds) {
+bool CloudAPI::fetchRemoteConfig(RemoteConfig& out) {
     if (server.isEmpty()) {
         LOG_ERROR("Server URL not set");
         return false;
     }
 
     HTTPClient http;
-    String url = server + ENDPOINT_WIFI_GET;
+    String url = server + ENDPOINT_CONFIG_GET;
     http.begin(url);
 
     int code = http.GET();
@@ -207,27 +186,30 @@ bool CloudAPI::fetchWifiCredentials(WifiCredentials& creds) {
     String response = http.getString();
     http.end();
 
-    DynamicJsonDocument doc(256);
+    DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, response);
     if (err) {
-        LOG_ERROR("Wifi config JSON parse error: %s", err.c_str());
+        LOG_ERROR("Config JSON parse error: %s", err.c_str());
         return false;
     }
 
-    if (!doc.containsKey("ssid") || !doc.containsKey("password")) {
-        LOG_WARN("Wifi config response missing ssid/password");
+    // configVersion wajib ada supaya bisa dibandingkan; kalau tidak ada
+    // sama sekali di response, anggap gagal (jangan tebak-tebak).
+    if (!doc.containsKey("configVersion")) {
+        LOG_WARN("Response /config tidak punya field configVersion, diabaikan");
         return false;
     }
+    out.configVersion = doc["configVersion"].as<uint32_t>();
+    out.hasConfigVersion = true;
 
-    creds.ssid = doc["ssid"].as<String>();
-    creds.password = doc["password"].as<String>();
+    if (doc.containsKey("wifiSSID"))       out.ssid = doc["wifiSSID"].as<String>();
+    if (doc.containsKey("wifiPassword"))   out.password = doc["wifiPassword"].as<String>();
+    if (doc.containsKey("uploadInterval")) out.uploadInterval = doc["uploadInterval"].as<uint32_t>();
+    if (doc.containsKey("listenWindow"))   out.listenWindow = doc["listenWindow"].as<uint32_t>();
+    if (doc.containsKey("sleepInterval"))  out.sleepInterval = doc["sleepInterval"].as<uint32_t>();
+    if (doc.containsKey("useDeepSleep"))   out.useDeepSleep = doc["useDeepSleep"].as<bool>();
 
-    if (creds.ssid.isEmpty()) {
-        LOG_WARN("Wifi config ssid kosong, diabaikan");
-        return false;
-    }
-
-    LOG_INFO("Wifi config diterima dari server: ssid=%s", creds.ssid.c_str());
+    LOG_INFO("Config diterima dari server: v%u", (unsigned)out.configVersion);
     return true;
 }
 

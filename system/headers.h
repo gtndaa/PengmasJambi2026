@@ -4,10 +4,11 @@
 #include <Wire.h>
 #include <FS.h>
 #include <SD.h>
+
 #include <SPI.h>
 #include <BH1750.h>
 #include <RTClib.h>
-#include <SmartRC_CC1101.h>   // library sebenarnya bernama ini, bukan ELECHOUSE_CC1101_SRC_DRV.h
+#include <SmartRC_CC1101.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <PubSubClient.h>
@@ -28,7 +29,7 @@
 // =====================================================================
 #define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
 #define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
-#define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
+#define SLEEP_INTERVAL_MS   300000     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
 #define LUX_INTERVAL        2000       // ms antar pembacaan lux
 
 #define TIMEZONE_OFFSET     0
@@ -55,9 +56,9 @@
 #define API_KEY             "your-api-key"
 
 // Endpoint sesuai routes.js backend (JSON/routes/routes.js)
-#define ENDPOINT_SENSOR_POST   "/sensordata"   // POST data cuaca (SensorData model)
+#define ENDPOINT_SENSOR_POST   "/sensordata"       // POST data cuaca (SensorData model)
 #define ENDPOINT_SENSOR_GET    "/sensordata"       // GET data cuaca terbaru
-#define ENDPOINT_WIFI_GET      "/wifi"             // GET konfigurasi wifi terbaru (WifiConfig model)
+#define ENDPOINT_CONFIG_GET    "/config"           // GET konfigurasi device terbaru (DeviceConfig model: wifi + interval dsb)
 
 // =====================================================================
 //  6. PINOUT CONFIGURATION
@@ -117,6 +118,7 @@
 // SD Card
 #define SD_MAX_RECORDS      1000
 #define SD_FILENAME         "/weather.log"
+#define SD_QUEUE_FILENAME   "/queue.csv"   // antrian data yang belum berhasil dikirim ke server
 
 // HTTP
 #define HTTP_TIMEOUT        10000
@@ -177,16 +179,36 @@ struct DeviceConfig {
     String mqttPassword;
     unsigned long uploadInterval = UPLOAD_INTERVAL_MS;   // ms
     unsigned long listenWindow = LISTEN_WINDOW_MS;        // ms
+    unsigned long sleepInterval = SLEEP_INTERVAL_MS;      // ms
+    bool useDeepSleep = true;
+
+    // Versi konfigurasi terakhir yang sudah diproses dari server.
+    // 0 = belum pernah sinkron sama sekali (kondisi awal / first boot).
+    uint32_t configVersion = 0;
 };
 
 // 4.4 WifiCredentials
-// Struct minimal, hanya ssid + password. Dipakai khusus untuk pertukaran
-// data dengan endpoint GET /wifi (backend WifiConfig model). Tidak ada
-// field lain karena URL server dan konfigurasi lain tidak pernah diatur
-// dari jarak jauh lewat jalur ini.
+// Struct minimal, hanya ssid + password. Dipakai oleh
+// WifiManager::connectWithFallback() untuk tes-konek SSID baru.
 struct WifiCredentials {
     String ssid;
     String password;
+};
+
+// 4.5 RemoteConfig
+// Bentuk data yang diterima dari endpoint GET /config (backend
+// DeviceConfig model). ssid/password diperlakukan khusus (dicoba
+// konek dulu sebelum dipakai permanen), field lain diterapkan
+// langsung kalau nilainya beda dari config yang tersimpan.
+struct RemoteConfig {
+    String   ssid;
+    String   password;
+    uint32_t uploadInterval = 0;   // 0 = tidak dikirim server / abaikan
+    uint32_t listenWindow = 0;
+    uint32_t sleepInterval = 0;
+    uint32_t configVersion = 0;
+    bool     useDeepSleep = true;
+    bool     hasConfigVersion = false; // true kalau field ini ada di response
 };
 
 // =====================================================================
@@ -288,24 +310,46 @@ private:
 };
 
 // --------------------------- 5.4 SDManager ----------------------------
+class CloudAPI; // forward declare, definisi lengkap ada di bawah (5.6)
+
 class SDManager {
 public:
     bool begin();
     bool isPresent() const;
-    bool appendRecord(const char* data);      // tambahkan baris ke file
+    bool appendRecord(const char* data);      // tambahkan baris ke file log biasa
     bool readAll(String& content);
     bool deleteFile();
     bool flush();
+
+    // ---- Antrian data yang gagal terkirim, disimpan persisten di SD ----
+    // (beda dengan RTC memory: RTC memory hilang kalau ESP32 benar-benar
+    // mati/reset total, sedangkan file di SD tetap ada).
+    bool queuePush(const WeatherData& d);     // simpan 1 data yang gagal terkirim
+    uint16_t queueCount();                    // jumlah data yang masih tertunda di SD
+
+    // Coba kirim ulang semua data di antrian lewat `api`. Data yang
+    // berhasil terkirim (server balas sukses / masuk database) langsung
+    // dihapus dari file SD; yang masih gagal tetap disimpan untuk
+    // dicoba lagi di siklus upload berikutnya.
+    // outSent  = jumlah yang berhasil terkirim & dihapus dari SD
+    // outRemaining = jumlah yang masih tersisa di SD setelah percobaan ini
+    void queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining);
+
 private:
     bool present = false;
     File file;
     String filename = SD_FILENAME;
+    String queueFilename = SD_QUEUE_FILENAME;
+
+    static String encodeRecord(const WeatherData& d);
+    static bool decodeRecord(const String& line, WeatherData& out);
 };
 
 // --------------------------- 5.5 LightSensor --------------------------
 class LightSensor {
 public:
     bool begin();
+    bool isReady() const;   // true jika begin() terakhir berhasil mendeteksi sensor
     void update();          // baca lux jika interval terlewati
     float readOnce();       // baca sekali langsung (dipakai saat wake singkat)
     float getLux() const;
@@ -316,6 +360,7 @@ private:
     float lux = 0.0f;
     uint32_t lastRead = 0;
     uint32_t interval = LUX_INTERVAL;
+    bool ready = false;
 };
 
 // --------------------------- 5.6 CC1101Driver -------------------------
@@ -397,11 +442,11 @@ public:
 
     bool uploadWeather(const WeatherData& data);
     bool uploadStatus(const DeviceStatus& status);
-    bool getConfig(String& configJSON);
 
-    // Ambil kredensial wifi terbaru dari endpoint GET /wifi (backend
-    // WifiConfig model). Hanya berisi ssid + password.
-    bool fetchWifiCredentials(WifiCredentials& creds);
+    // Ambil konfigurasi terbaru dari endpoint GET /config (backend
+    // DeviceConfig model): wifiSSID, wifiPassword, uploadInterval,
+    // listenWindow, sleepInterval, configVersion, useDeepSleep.
+    bool fetchRemoteConfig(RemoteConfig& out);
 
     bool subscribe(const char* topic);
     void setConfigCallback(ConfigCallback cb);
@@ -485,7 +530,7 @@ public:
     static void init();
     static void run();              // satu siklus kerja: dengar radio -> baca lux -> (mungkin) upload -> hitung waktu sleep berikutnya
     static void receiveWeather(uint32_t listenWindowMs);
-    static void readLight();
+    static void readLight(LightSensor& light);
     static void storeData();
     static void upload();
     static uint32_t computeNextSleepMs(); // dihitung setelah run(), dipakai Scheduler::goToSleep()
