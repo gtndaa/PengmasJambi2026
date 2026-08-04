@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 
-class WifiScreen extends StatefulWidget {
+class WifiScreen
+    extends StatefulWidget {
   const WifiScreen({
     super.key,
   });
 
   @override
-  State<WifiScreen> createState() =>
-      _WifiScreenState();
+  State<WifiScreen>
+      createState() =>
+          _WifiScreenState();
 }
 
 class _WifiScreenState
@@ -26,15 +28,17 @@ class _WifiScreenState
   // =====================================================
 
   final TextEditingController
-      wifiSsidController =
+      wifiSSIDController =
       TextEditingController(
-    text: '',
+    text:
+        'yaa gapunya data',
   );
 
   final TextEditingController
       wifiPasswordController =
       TextEditingController(
-    text: '',
+    text:
+        'hotspotgwserahgw',
   );
 
   // =====================================================
@@ -44,19 +48,22 @@ class _WifiScreenState
   final TextEditingController
       uploadIntervalController =
       TextEditingController(
-    text: '300000',
+    text:
+        '300000',
   );
 
   final TextEditingController
       listenWindowController =
       TextEditingController(
-    text: '10000',
+    text:
+        '48000',
   );
 
   final TextEditingController
-      timezoneOffsetController =
+      sleepIntervalController =
       TextEditingController(
-    text: '25200',
+    text:
+        '0',
   );
 
   // =====================================================
@@ -69,7 +76,23 @@ class _WifiScreenState
 
   bool isSending = false;
 
-  bool isAdvancedExpanded = false;
+  bool isAdvancedExpanded =
+      false;
+
+  String connectedWifi = '';
+
+  // =====================================================
+  // INIT
+  // =====================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    connectedWifi =
+        wifiSSIDController.text
+            .trim();
+  }
 
   // =====================================================
   // DISPOSE
@@ -77,9 +100,11 @@ class _WifiScreenState
 
   @override
   void dispose() {
-    wifiSsidController.dispose();
+    wifiSSIDController
+        .dispose();
 
-    wifiPasswordController.dispose();
+    wifiPasswordController
+        .dispose();
 
     uploadIntervalController
         .dispose();
@@ -87,134 +112,143 @@ class _WifiScreenState
     listenWindowController
         .dispose();
 
-    timezoneOffsetController
+    sleepIntervalController
         .dispose();
 
     super.dispose();
   }
 
   // =====================================================
-  // SHOW ERROR
+  // SNACKBAR
   // =====================================================
 
-  void showError(
-    String message,
-  ) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+  void showMessage({
+    required String message,
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(
       SnackBar(
-        content: Text(
+        content:
+            Text(
           message,
         ),
+
         backgroundColor:
-            Colors.red,
+            isError
+                ? Colors.red
+                : Colors.green,
       ),
     );
   }
 
   // =====================================================
-  // SHOW SUCCESS
+  // PARSE INTEGER
   // =====================================================
 
-  void showSuccess(
-    String message,
+  int? parseInteger(
+    String value,
   ) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-        ),
-        backgroundColor:
-            Colors.green,
-      ),
+    return int.tryParse(
+      value.trim(),
     );
   }
 
   // =====================================================
-  // SAVE AND SEND CONFIGURATION
+  // KIRIM KONFIGURASI
   // =====================================================
 
   Future<void>
-      saveAndSendConfiguration() async {
-    // ===================================================
-    // VALIDASI WIFI SSID
-    // ===================================================
+      sendConfiguration() async {
+    final wifiSSID =
+        wifiSSIDController.text
+            .trim();
 
-    if (wifiSsidController
-        .text
-        .trim()
-        .isEmpty) {
-      showError(
-        'WiFi SSID harus diisi',
-      );
+    final wifiPassword =
+        wifiPasswordController
+            .text;
 
-      return;
-    }
-
-    // ===================================================
-    // VALIDASI WIFI PASSWORD
-    // ===================================================
-
-    if (wifiPasswordController
-        .text
-        .isEmpty) {
-      showError(
-        'Password WiFi harus diisi',
-      );
-
-      return;
-    }
-
-    // ===================================================
-    // VALIDASI ANGKA
-    // ===================================================
-
-    final int? uploadInterval =
-        int.tryParse(
+    final uploadInterval =
+        parseInteger(
       uploadIntervalController
-          .text
-          .trim(),
+          .text,
     );
 
-    final int? listenWindow =
-        int.tryParse(
+    final listenWindow =
+        parseInteger(
       listenWindowController
-          .text
-          .trim(),
+          .text,
     );
 
-    final int? timezoneOffset =
-        int.tryParse(
-      timezoneOffsetController
-          .text
-          .trim(),
+    final sleepInterval =
+        parseInteger(
+      sleepIntervalController
+          .text,
     );
+
+    // ===================================================
+    // VALIDASI WIFI
+    // ===================================================
+
+    if (wifiSSID.isEmpty) {
+      showMessage(
+        message:
+            'WiFi SSID harus diisi',
+        isError: true,
+      );
+
+      return;
+    }
+
+    if (wifiPassword.isEmpty) {
+      showMessage(
+        message:
+            'Password WiFi harus diisi',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ===================================================
+    // VALIDASI ADVANCED SETTINGS
+    // ===================================================
 
     if (uploadInterval == null ||
-        uploadInterval <= 0) {
-      showError(
-        'Upload interval harus '
-        'berupa angka lebih dari 0',
+        uploadInterval < 0) {
+      showMessage(
+        message:
+            'Upload interval '
+            'harus berupa angka '
+            'positif',
+        isError: true,
       );
 
       return;
     }
 
     if (listenWindow == null ||
-        listenWindow <= 0) {
-      showError(
-        'Listen window harus '
-        'berupa angka lebih dari 0',
+        listenWindow < 0) {
+      showMessage(
+        message:
+            'Listen window '
+            'harus berupa angka '
+            'positif',
+        isError: true,
       );
 
       return;
     }
 
-    if (timezoneOffset == null) {
-      showError(
-        'Timezone offset harus '
-        'berupa angka',
+    if (sleepInterval == null ||
+        sleepInterval < 0) {
+      showMessage(
+        message:
+            'Sleep interval '
+            'harus berupa angka '
+            'positif atau 0',
+        isError: true,
       );
 
       return;
@@ -229,62 +263,26 @@ class _WifiScreenState
     });
 
     try {
-      // =================================================
-      // FORMAT JSON YANG DIKIRIM KE CLOUD
-      // =================================================
-
-      final Map<String, dynamic>
-          config = {
-        'wifiSSID':
-            wifiSsidController
-                .text
-                .trim(),
-
-        'wifiPassword':
-            wifiPasswordController
-                .text,
-
-        'uploadInterval':
-            uploadInterval,
-
-        'listenWindow':
-            listenWindow,
-
-        'timezoneOffset':
-            timezoneOffset,
-
-        'useDeepSleep':
-            useDeepSleep,
-      };
-
-      // =================================================
-      // CETAK DATA KE DEBUG CONSOLE
-      // =================================================
-
-      debugPrint(
-        '================================',
-      );
-
-      debugPrint(
-        'DATA YANG AKAN DIKIRIM:',
-      );
-
-      debugPrint(
-        config.toString(),
-      );
-
-      debugPrint(
-        '================================',
-      );
-
-      // =================================================
-      // KIRIM KE CLOUD
-      // =================================================
-
       final result =
           await apiService
               .sendDeviceConfig(
-        config: config,
+        wifiSSID:
+            wifiSSID,
+
+        wifiPassword:
+            wifiPassword,
+
+        uploadInterval:
+            uploadInterval,
+
+        listenWindow:
+            listenWindow,
+
+        sleepInterval:
+            sleepInterval,
+
+        useDeepSleep:
+            useDeepSleep,
       );
 
       if (!mounted) {
@@ -293,12 +291,18 @@ class _WifiScreenState
 
       setState(() {
         isSending = false;
+
+        connectedWifi =
+            wifiSSID;
       });
 
-      showSuccess(
-        result['message'] ??
-            'Konfigurasi berhasil '
-                'dikirim ke cloud',
+      showMessage(
+        message:
+            result['message']
+                    ?.toString() ??
+                'Konfigurasi '
+                    'berhasil dikirim',
+        isError: false,
       );
     } catch (error) {
       if (!mounted) {
@@ -309,9 +313,12 @@ class _WifiScreenState
         isSending = false;
       });
 
-      showError(
-        'Gagal mengirim konfigurasi:\n'
-        '$error',
+      showMessage(
+        message:
+            'Gagal mengirim '
+            'konfigurasi:\n'
+            '$error',
+        isError: true,
       );
     }
   }
@@ -325,21 +332,25 @@ class _WifiScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
+      appBar:
+          AppBar(
+        title:
+            const Text(
           'WiFi Settings',
         ),
       ),
 
-      body: SafeArea(
+      body:
+          SafeArea(
         child:
             SingleChildScrollView(
           padding:
               const EdgeInsets.all(
-            20,
+            18,
           ),
 
-          child: Column(
+          child:
+              Column(
             crossAxisAlignment:
                 CrossAxisAlignment
                     .stretch,
@@ -352,84 +363,87 @@ class _WifiScreenState
               const Icon(
                 Icons.wifi,
                 size: 70,
-                color: Colors.blue,
+                color:
+                    Colors.blue,
               ),
 
               const SizedBox(
-                height: 16,
+                height: 10,
               ),
 
               const Text(
-                'Pengaturan WiFi',
+                'Konfigurasi Perangkat',
                 textAlign:
                     TextAlign.center,
                 style:
                     TextStyle(
-                  fontSize: 24,
+                  fontSize:
+                      24,
+
                   fontWeight:
                       FontWeight.bold,
                 ),
               ),
 
               const SizedBox(
-                height: 8,
+                height: 6,
               ),
 
               const Text(
-                'Masukkan informasi WiFi '
-                'dan konfigurasi perangkat.',
+                'Atur koneksi WiFi '
+                'dan pengaturan '
+                'operasi ESP32.',
                 textAlign:
                     TextAlign.center,
               ),
 
               const SizedBox(
-                height: 28,
+                height: 22,
               ),
 
               // =========================================
-              // WIFI CARD
+              // WIFI STATUS
+              // =========================================
+
+              _buildWiFiStatus(),
+
+              const SizedBox(
+                height: 16,
+              ),
+
+              // =========================================
+              // WIFI SETTINGS
               // =========================================
 
               Card(
-                child: Padding(
+                child:
+                    Padding(
                   padding:
                       const EdgeInsets.all(
-                    18,
+                    17,
                   ),
 
-                  child: Column(
+                  child:
+                      Column(
                     crossAxisAlignment:
                         CrossAxisAlignment
                             .stretch,
 
                     children: [
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons
-                                .wifi_outlined,
-                          ),
+                      const Text(
+                        'WiFi Settings',
+                        style:
+                            TextStyle(
+                          fontSize:
+                              18,
 
-                          SizedBox(
-                            width: 10,
-                          ),
-
-                          Text(
-                            'WiFi Settings',
-                            style:
-                                TextStyle(
-                              fontSize:
-                                  18,
-                              fontWeight:
-                                  FontWeight
-                                      .bold,
-                            ),
-                          ),
-                        ],
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
                       ),
 
                       const SizedBox(
-                        height: 20,
+                        height: 18,
                       ),
 
                       // =================================
@@ -438,15 +452,12 @@ class _WifiScreenState
 
                       TextField(
                         controller:
-                            wifiSsidController,
+                            wifiSSIDController,
 
                         decoration:
                             const InputDecoration(
                           labelText:
                               'WiFi SSID',
-
-                          hintText:
-                              'Masukkan nama WiFi',
 
                           prefixIcon:
                               Icon(
@@ -460,7 +471,7 @@ class _WifiScreenState
                       ),
 
                       const SizedBox(
-                        height: 18,
+                        height: 15,
                       ),
 
                       // =================================
@@ -478,9 +489,6 @@ class _WifiScreenState
                             InputDecoration(
                           labelText:
                               'WiFi Password',
-
-                          hintText:
-                              'Masukkan password WiFi',
 
                           prefixIcon:
                               const Icon(
@@ -519,7 +527,7 @@ class _WifiScreenState
               ),
 
               const SizedBox(
-                height: 18,
+                height: 14,
               ),
 
               // =========================================
@@ -544,7 +552,8 @@ class _WifiScreenState
 
                   leading:
                       const Icon(
-                    Icons.settings,
+                    Icons
+                        .settings,
                   ),
 
                   title:
@@ -559,184 +568,181 @@ class _WifiScreenState
 
                   subtitle:
                       const Text(
-                    'Pengaturan interval, '
-                    'timezone, dan deep sleep',
-                  ),
-
-                  childrenPadding:
-                      const EdgeInsets.fromLTRB(
-                    18,
-                    0,
-                    18,
-                    18,
+                    'Upload, listen, '
+                    'sleep, dan '
+                    'deep sleep',
                   ),
 
                   children: [
-                    // ===============================
-                    // UPLOAD INTERVAL
-                    // ===============================
-
-                    TextField(
-                      controller:
-                          uploadIntervalController,
-
-                      keyboardType:
-                          TextInputType
-                              .number,
-
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Upload Interval',
-
-                        hintText:
-                            'Contoh: 300000',
-
-                        helperText:
-                            'Satuan: milidetik '
-                            '(ms)',
-
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .cloud_upload_outlined,
-                        ),
-
-                        border:
-                            OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(
-                      height: 18,
-                    ),
-
-                    // ===============================
-                    // LISTEN WINDOW
-                    // ===============================
-
-                    TextField(
-                      controller:
-                          listenWindowController,
-
-                      keyboardType:
-                          TextInputType
-                              .number,
-
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Listen Window',
-
-                        hintText:
-                            'Contoh: 10000',
-
-                        helperText:
-                            'Satuan: milidetik '
-                            '(ms)',
-
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .sensors,
-                        ),
-
-                        border:
-                            OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(
-                      height: 18,
-                    ),
-
-                    // ===============================
-                    // TIMEZONE OFFSET
-                    // ===============================
-
-                    TextField(
-                      controller:
-                          timezoneOffsetController,
-
-                      keyboardType:
-                          const TextInputType
-                              .numberWithOptions(
-                        signed:
-                            true,
+                    Padding(
+                      padding:
+                          const EdgeInsets
+                              .fromLTRB(
+                        17,
+                        5,
+                        17,
+                        18,
                       ),
 
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Timezone Offset',
+                      child:
+                          Column(
+                        children: [
+                          // =============================
+                          // UPLOAD INTERVAL
+                          // =============================
 
-                        hintText:
-                            'Contoh: 25200',
+                          TextField(
+                            controller:
+                                uploadIntervalController,
 
-                        helperText:
-                            'Satuan: detik '
-                            '(WIB = 25200)',
+                            keyboardType:
+                                TextInputType
+                                    .number,
 
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .schedule,
-                        ),
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Upload Interval',
 
-                        border:
-                            OutlineInputBorder(),
+                              helperText:
+                                  'Satuan: ms',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .cloud_upload,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                15,
+                          ),
+
+                          // =============================
+                          // LISTEN WINDOW
+                          // =============================
+
+                          TextField(
+                            controller:
+                                listenWindowController,
+
+                            keyboardType:
+                                TextInputType
+                                    .number,
+
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Listen Window',
+
+                              helperText:
+                                  'Satuan: ms',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .sensors,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                15,
+                          ),
+
+                          // =============================
+                          // SLEEP INTERVAL
+                          // =============================
+
+                          TextField(
+                            controller:
+                                sleepIntervalController,
+
+                            keyboardType:
+                                TextInputType
+                                    .number,
+
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Sleep Interval',
+
+                              helperText:
+                                  'Satuan: ms. '
+                                  'Isi 0 untuk '
+                                  'tidak tidur.',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .bedtime,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                8,
+                          ),
+
+                          // =============================
+                          // DEEP SLEEP
+                          // =============================
+
+                          SwitchListTile(
+                            contentPadding:
+                                EdgeInsets
+                                    .zero,
+
+                            title:
+                                const Text(
+                              'Use Deep Sleep',
+                            ),
+
+                            subtitle:
+                                Text(
+                              useDeepSleep
+                                  ? 'Deep sleep '
+                                      'aktif'
+                                  : 'Deep sleep '
+                                      'nonaktif',
+                            ),
+
+                            value:
+                                useDeepSleep,
+
+                            onChanged:
+                                (value) {
+                              setState(
+                                () {
+                                  useDeepSleep =
+                                      value;
+                                },
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    ),
-
-                    const SizedBox(
-                      height: 10,
-                    ),
-
-                    // ===============================
-                    // DEEP SLEEP
-                    // ===============================
-
-                    SwitchListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-
-                      title:
-                          const Text(
-                        'Use Deep Sleep',
-                      ),
-
-                      subtitle:
-                          Text(
-                        useDeepSleep
-                            ? 'Deep sleep aktif'
-                            : 'Deep sleep tidak aktif',
-                      ),
-
-                      secondary:
-                          const Icon(
-                        Icons
-                            .bedtime_outlined,
-                      ),
-
-                      value:
-                          useDeepSleep,
-
-                      onChanged:
-                          (value) {
-                        setState(
-                          () {
-                            useDeepSleep =
-                                value;
-                          },
-                        );
-                      },
                     ),
                   ],
                 ),
               ),
 
               const SizedBox(
-                height: 26,
+                height:
+                    22,
               ),
 
               // =========================================
@@ -744,20 +750,25 @@ class _WifiScreenState
               // =========================================
 
               SizedBox(
-                height: 52,
+                height:
+                    54,
 
                 child:
                     ElevatedButton.icon(
                   onPressed:
                       isSending
                           ? null
-                          : saveAndSendConfiguration,
+                          : sendConfiguration,
 
                   icon:
                       isSending
                           ? const SizedBox(
-                              width: 22,
-                              height: 22,
+                              width:
+                                  22,
+
+                              height:
+                                  22,
+
                               child:
                                   CircularProgressIndicator(
                                 strokeWidth:
@@ -773,68 +784,144 @@ class _WifiScreenState
                       Text(
                     isSending
                         ? 'MENGIRIM...'
-                        : 'SIMPAN DAN KIRIM',
+                        : 'SIMPAN & KIRIM '
+                            'KONFIGURASI',
                   ),
                 ),
               ),
 
               const SizedBox(
-                height: 20,
-              ),
-
-              // =========================================
-              // INFORMATION
-              // =========================================
-
-              Container(
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
-
-                decoration:
-                    BoxDecoration(
-                  color:
-                      Colors.blue
-                          .withValues(
-                    alpha: 0.08,
-                  ),
-
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
-                ),
-
-                child:
-                    const Row(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                    ),
-
-                    SizedBox(
-                      width: 10,
-                    ),
-
-                    Expanded(
-                      child:
-                          Text(
-                        'Konfigurasi akan '
-                        'dikirim ke cloud '
-                        'melalui API.',
-                      ),
-                    ),
-                  ],
-                ),
+                height:
+                    20,
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // WIFI STATUS
+  // =====================================================
+
+  Widget _buildWiFiStatus() {
+    final hasWiFi =
+        connectedWifi
+            .isNotEmpty;
+
+    return Container(
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+
+      decoration:
+          BoxDecoration(
+        color:
+            hasWiFi
+                ? Colors.green
+                    .withValues(
+                    alpha:
+                        0.10,
+                  )
+                : Colors.grey
+                    .withValues(
+                    alpha:
+                        0.10,
+                  ),
+
+        borderRadius:
+            BorderRadius.circular(
+          14,
+        ),
+
+        border:
+            Border.all(
+          color:
+              hasWiFi
+                  ? Colors.green
+                  : Colors.grey,
+        ),
+      ),
+
+      child:
+          Row(
+        children: [
+          CircleAvatar(
+            backgroundColor:
+                hasWiFi
+                    ? Colors.green
+                    : Colors.grey,
+
+            child:
+                Icon(
+              hasWiFi
+                  ? Icons
+                      .wifi
+                  : Icons
+                      .wifi_off,
+
+              color:
+                  Colors.white,
+            ),
+          ),
+
+          const SizedBox(
+            width:
+                13,
+          ),
+
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment
+                      .start,
+
+              children: [
+                Text(
+                  hasWiFi
+                      ? 'Konfigurasi WiFi'
+                      : 'Belum ada WiFi',
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+
+                    fontSize:
+                        16,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                      3,
+                ),
+
+                Text(
+                  hasWiFi
+                      ? connectedWifi
+                      : 'Masukkan SSID '
+                          'WiFi',
+                ),
+              ],
+            ),
+          ),
+
+          Icon(
+            hasWiFi
+                ? Icons
+                    .check_circle
+                : Icons
+                    .info_outline,
+
+            color:
+                hasWiFi
+                    ? Colors.green
+                    : Colors.grey,
+          ),
+        ],
       ),
     );
   }

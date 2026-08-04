@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../views/dashboard_screen/dashboard_screen.dart';
 import '../views/wifi_screen/wifi_screen.dart';
-import '../views/bmkg_screen/bmkg_screen.dart';
+import '../views/data_lahan_screen/data_lahan_screen.dart';
 import '../views/notification_screen/notification_screen.dart';
 import '../views/profile_screen/profile_screen.dart';
 

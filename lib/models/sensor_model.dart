@@ -1,39 +1,161 @@
-class SensorModel {
+class SensorDataModel {
+  final int logId;
+
+  final DateTime datetime;
+
+  final String deviceId;
+
+  final int channel;
+
+  final String batteryStatus;
 
   final double temperature;
 
   final double humidity;
 
-  final double pressure;
+  final double windSpeed;
 
-  final double rainfall;
+  final double windGust;
 
-  SensorModel({
+  final String windDirection;
 
+  final double windDegree;
+
+  final double rainDelta;
+
+  final double rainTotal;
+
+  final double rainRaw;
+
+  final double lightLux;
+
+  const SensorDataModel({
+    required this.logId,
+    required this.datetime,
+    required this.deviceId,
+    required this.channel,
+    required this.batteryStatus,
     required this.temperature,
-
     required this.humidity,
-
-    required this.pressure,
-
-    required this.rainfall,
-
+    required this.windSpeed,
+    required this.windGust,
+    required this.windDirection,
+    required this.windDegree,
+    required this.rainDelta,
+    required this.rainTotal,
+    required this.rainRaw,
+    required this.lightLux,
   });
 
-  factory SensorModel.fromJson(Map<String, dynamic> json){
+  factory SensorDataModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return SensorDataModel(
+      logId:
+          _toInt(
+        json['logId'],
+      ),
 
-    return SensorModel(
+      datetime:
+          DateTime.tryParse(
+        json['datetime']
+                ?.toString() ??
+            '',
+      ) ??
+              DateTime.now(),
 
-      temperature: json["temperature"] ?? 0,
+      deviceId:
+          json['id']
+                  ?.toString() ??
+              '',
 
-      humidity: json["humidity"] ?? 0,
+      channel:
+          _toInt(
+        json['ch'],
+      ),
 
-      pressure: json["pressure"] ?? 0,
+      batteryStatus:
+          json['batt']
+                  ?.toString() ??
+              'Unknown',
 
-      rainfall: json["rainfall"] ?? 0,
+      temperature:
+          _toDouble(
+        json['temp_out'],
+      ),
 
+      humidity:
+          _toDouble(
+        json['hum_out'],
+      ),
+
+      windSpeed:
+          _toDouble(
+        json['wind_speed'],
+      ),
+
+      windGust:
+          _toDouble(
+        json['wind_gust'],
+      ),
+
+      windDirection:
+          json['wind_dir']
+                  ?.toString() ??
+              '-',
+
+      windDegree:
+          _toDouble(
+        json['wind_deg'],
+      ),
+
+      rainDelta:
+          _toDouble(
+        json['rain_delta'],
+      ),
+
+      rainTotal:
+          _toDouble(
+        json['rain_total'],
+      ),
+
+      rainRaw:
+          _toDouble(
+        json['rain_raw'],
+      ),
+
+      lightLux:
+          _toDouble(
+        json['light_lux'],
+      ),
     );
-
   }
 
+  static int _toInt(
+    dynamic value,
+  ) {
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(
+          value?.toString() ??
+              '',
+        ) ??
+        0;
+  }
+
+  static double _toDouble(
+    dynamic value,
+  ) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ??
+              '',
+        ) ??
+        0;
+  }
 }

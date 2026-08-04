@@ -7,7 +7,7 @@ import 'views/login_screen/login_screen.dart';
 
 import 'views/dashboard_screen/dashboard_screen.dart';
 
-import 'views/bmkg_screen/bmkg_screen.dart';
+import '../views/data_lahan_screen/data_lahan_screen.dart';
 
 import 'views/wifi_screen/wifi_screen.dart';
 
