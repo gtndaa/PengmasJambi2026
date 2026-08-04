@@ -3,11 +3,9 @@ const express = require('express');
 const router = express.Router();
 
 // Import Controller yang diperlukan
-const { getUsers, register, login, ubahTanaman } = require('../controller/Users');
-const { getAllLokasiLahan, getAllLocationKey, getOneLocationKey } = require('../controller/LokasiLahan');
-const { getAllKegiatan } = require('../controller/Kalender');
+const { getUsers, register, login } = require('../controller/Users');
 const { authenticateJWT } = require('../middleware/tokenVerification');
-const { setWifiConfig, getWifiConfig } = require('../controllers/wifiController.js');
+const { setDeviceConfig, getDeviceConfig } = require('../controller/deviceConfigController');
 const { getLatestSensorData, tambahSensorData } = require('../controller/SensorController');
 
 // Home Route
@@ -22,13 +20,12 @@ router.get('/protected', authenticateJWT, (req, res) => {
 router.get('/users', getUsers);
 router.post('/register', register);
 router.post('/login', login);
-router.post('/ubahtanaman', ubahTanaman);
 
 // Route Sensor (Baru) -> Ini yang akan dipanggil Flutter
 router.get('/sensordata', getLatestSensorData);
-router.post('/postsensordata', tambahSensorData);
+router.post('/sensordata', tambahSensorData);
 
-router.post('/wifi', setWifiConfig); // Pintu masuk dari Flutter
-router.get('/wifi', getWifiConfig);  // Pintu keluar ke ESP32
+router.post('/config', setDeviceConfig);
+router.get('/config', getDeviceConfig);
 
 module.exports = { router };
