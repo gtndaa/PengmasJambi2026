@@ -1,0 +1,285 @@
+import 'package:flutter/material.dart';
+
+import '../../services/auth_service.dart';
+import '../../widgets/navigationbar.dart';
+import '../register_screen/register_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({
+    super.key,
+  });
+
+  @override
+  State<LoginScreen> createState() =>
+      _LoginScreenState();
+}
+
+class _LoginScreenState
+    extends State<LoginScreen> {
+  final identifierController =
+      TextEditingController();
+
+  final passwordController =
+      TextEditingController();
+
+  final AuthService authService =
+      AuthService();
+
+  bool isLoading = false;
+  bool obscurePassword = true;
+  bool rememberMe = true;
+
+  @override
+  void dispose() {
+    identifierController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> login() async {
+    final identifier =
+        identifierController.text.trim();
+
+    final password =
+        passwordController.text;
+
+    if (identifier.isEmpty ||
+        password.isEmpty) {
+      _showMessage(
+        'Username/email dan password harus diisi',
+      );
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    final result =
+        await authService.login(
+      identifier: identifier,
+      password: password,
+      rememberMe: rememberMe,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = false;
+    });
+
+    if (!result.success) {
+      _showMessage(result.message);
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const NavigationMenu(),
+      ),
+    );
+  }
+
+  Future<void> openRegister() async {
+    final registeredUsername =
+        await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const RegisterScreen(),
+      ),
+    );
+
+    if (registeredUsername != null) {
+      identifierController.text =
+          registeredUsername;
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.agriculture,
+                  size: 90,
+                ),
+
+                const SizedBox(
+                  height: 20,
+                ),
+
+                const Text(
+                  'App ELED',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 8,
+                ),
+
+                const Text(
+                  'Login untuk melanjutkan',
+                ),
+
+                const SizedBox(
+                  height: 35,
+                ),
+
+                TextField(
+                  controller:
+                      identifierController,
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Username / Email',
+                    hintText:
+                        'Masukkan username atau email',
+                    prefixIcon:
+                        Icon(
+                      Icons.person,
+                    ),
+                    border:
+                        OutlineInputBorder(),
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 20,
+                ),
+
+                TextField(
+                  controller:
+                      passwordController,
+                  obscureText:
+                      obscurePassword,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        'Password',
+                    prefixIcon:
+                        const Icon(
+                      Icons.lock,
+                    ),
+                    border:
+                        const OutlineInputBorder(),
+                    suffixIcon:
+                        IconButton(
+                      onPressed: () {
+                        setState(() {
+                          obscurePassword =
+                              !obscurePassword;
+                        });
+                      },
+                      icon: Icon(
+                        obscurePassword
+                            ? Icons.visibility
+                            : Icons
+                                .visibility_off,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 8,
+                ),
+
+                Row(
+                  children: [
+                    Checkbox(
+                      value: rememberMe,
+                      onChanged: (value) {
+                        setState(() {
+                          rememberMe =
+                              value ?? false;
+                        });
+                      },
+                    ),
+
+                    const Text(
+                      'Ingat saya',
+                    ),
+                  ],
+                ),
+
+                const SizedBox(
+                  height: 20,
+                ),
+
+                SizedBox(
+                  width:
+                      double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : login,
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth:
+                                  2,
+                            ),
+                          )
+                        : const Text(
+                            'LOGIN',
+                          ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 16,
+                ),
+
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Belum punya akun?',
+                    ),
+                    TextButton(
+                      onPressed:
+                          openRegister,
+                      child: const Text(
+                        'Daftar',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
