@@ -255,16 +255,7 @@ void SystemManager::upload() {
         return;
     }
 
-    WiFiClient espClient;
-    CloudAPI api(espClient);
-    api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str(),
-              cfg.mqttBroker.c_str(), cfg.mqttPort,
-              cfg.mqttClientId.c_str(),
-              cfg.mqttUsername.c_str(), cfg.mqttPassword.c_str());
 
-    if (!cfg.mqttBroker.isEmpty()) {
-        api.connectMQTT();
-    }
 
     // ------------------------------------------------------------------
     // Sinkronisasi config dari server (GET /config), berbasis configVersion:

@@ -421,49 +421,7 @@ private:
     uint32_t lastWake = 0;
 };
 
-// --------------------------- 5.9 CloudAPI -----------------------------
-typedef std::function<void(const String& configJSON)> ConfigCallback;
-
-class CloudAPI {
-public:
-    CloudAPI(WiFiClient& client);
-
-    bool begin(const char* serverURL,
-               const char* apiKey,
-               const char* mqttBroker = nullptr,
-               uint16_t mqttPort = 1883,
-               const char* mqttClientId = nullptr,
-               const char* mqttUsername = nullptr,
-               const char* mqttPassword = nullptr);
-
-    bool connectMQTT();
-    bool disconnectMQTT();
-    bool isMQTTConnected() const;
-
-    bool uploadWeather(const WeatherData& data);
-    bool uploadStatus(const DeviceStatus& status);
-
-    // Ambil konfigurasi terbaru dari endpoint GET /config (backend
-    // DeviceConfig model): wifiSSID, wifiPassword, uploadInterval,
-    // listenWindow, sleepInterval, configVersion, useDeepSleep.
-    bool fetchRemoteConfig(RemoteConfig& out);
-
-    bool subscribe(const char* topic);
-    void setConfigCallback(ConfigCallback cb);
-    void loop();
-
-private:
-    String server;
-    String apiKey;
-    mutable PubSubClient mqttClient;
-    String mqttClientId;
-    String mqttUsername;
-    String mqttPassword;
-    ConfigCallback configCb;
-    static CloudAPI* instance;
-    static void mqttCallback(char* topic, byte* payload, unsigned int length);
-    void handleMessage(char* topic, byte* payload, unsigned int length);
-};
+// --------------------------- 5.9 [DELETED] -----------------------------
 
 // --------------------------- 5.10 ConfigManager ------------------------
 class ConfigManager {
