@@ -1,95 +1,85 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../services/device_config_service.dart';
+import '../../services/api_service.dart';
 
-class WifiScreen extends StatefulWidget {
+class WifiScreen
+    extends StatefulWidget {
   const WifiScreen({
     super.key,
   });
 
   @override
-  State<WifiScreen> createState() =>
-      _WifiScreenState();
+  State<WifiScreen>
+      createState() =>
+          _WifiScreenState();
 }
 
 class _WifiScreenState
     extends State<WifiScreen> {
   // =====================================================
-  // SERVICE
+  // API SERVICE
   // =====================================================
 
-  final DeviceConfigService
-      deviceConfigService =
-      DeviceConfigService();
+  final ApiService apiService =
+      ApiService();
 
   // =====================================================
-  // CONTROLLERS
+  // WIFI CONTROLLERS
   // =====================================================
 
   final TextEditingController
       wifiSSIDController =
-      TextEditingController();
+      TextEditingController(
+    text:
+        'yaa gapunya data',
+  );
 
   final TextEditingController
       wifiPasswordController =
-      TextEditingController();
+      TextEditingController(
+    text:
+        'hotspotgwserahgw',
+  );
 
-  final TextEditingController
-      serverURLController =
-      TextEditingController();
-
-  final TextEditingController
-      apiKeyController =
-      TextEditingController();
+  // =====================================================
+  // ADVANCED SETTINGS CONTROLLERS
+  // =====================================================
 
   final TextEditingController
       uploadIntervalController =
       TextEditingController(
-    text: '60000',
+    text:
+        '300000',
   );
 
   final TextEditingController
       listenWindowController =
       TextEditingController(
-    text: '10000',
+    text:
+        '48000',
   );
 
   final TextEditingController
-      configVersionController =
+      sleepIntervalController =
       TextEditingController(
-    text: '1',
+    text:
+        '0',
   );
 
   // =====================================================
-  // STATUS
+  // STATE
   // =====================================================
 
-  bool useDeepSleep = false;
+  bool useDeepSleep = true;
+
+  bool obscurePassword = true;
 
   bool isSending = false;
 
-  bool isLoading = true;
+  bool isAdvancedExpanded =
+      false;
 
-  bool obscureWifiPassword = true;
-
-  bool obscureApiKey = true;
-
-  // =====================================================
-  // TIMEZONE
-  // =====================================================
-
-  String selectedTimezone =
-      'UTC+7';
-
-  final Map<String, int>
-      timezoneOffsets = {
-    'UTC+7': 25200,
-    'UTC+8': 28800,
-    'UTC+9': 32400,
-  };
+  String connectedWifi = '';
 
   // =====================================================
   // INIT
@@ -99,365 +89,9 @@ class _WifiScreenState
   void initState() {
     super.initState();
 
-    loadSavedConfiguration();
-  }
-
-  // =====================================================
-  // LOAD DATA TERAKHIR
-  // =====================================================
-
-  Future<void>
-      loadSavedConfiguration() async {
-    final prefs =
-        await SharedPreferences
-            .getInstance();
-
-    wifiSSIDController.text =
-        prefs.getString(
-              'wifiSSID',
-            ) ??
-            '';
-
-    wifiPasswordController.text =
-        prefs.getString(
-              'wifiPassword',
-            ) ??
-            '';
-
-    serverURLController.text =
-        prefs.getString(
-              'serverURL',
-            ) ??
-            '';
-
-    apiKeyController.text =
-        prefs.getString(
-              'apiKey',
-            ) ??
-            '';
-
-    uploadIntervalController
-        .text = prefs.getString(
-          'uploadInterval',
-        ) ??
-        '60000';
-
-    listenWindowController
-        .text = prefs.getString(
-          'listenWindow',
-        ) ??
-        '10000';
-
-    configVersionController
-        .text = prefs.getString(
-          'configVersion',
-        ) ??
-        '1';
-
-    selectedTimezone =
-        prefs.getString(
-              'timezone',
-            ) ??
-            'UTC+7';
-
-    useDeepSleep =
-        prefs.getBool(
-              'useDeepSleep',
-            ) ??
-            false;
-
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  // =====================================================
-  // SIMPAN DATA LOKAL
-  // =====================================================
-
-  Future<void>
-      saveConfigurationLocally() async {
-    final prefs =
-        await SharedPreferences
-            .getInstance();
-
-    await prefs.setString(
-      'wifiSSID',
-      wifiSSIDController.text,
-    );
-
-    await prefs.setString(
-      'wifiPassword',
-      wifiPasswordController.text,
-    );
-
-    await prefs.setString(
-      'serverURL',
-      serverURLController.text,
-    );
-
-    await prefs.setString(
-      'apiKey',
-      apiKeyController.text,
-    );
-
-    await prefs.setString(
-      'uploadInterval',
-      uploadIntervalController.text,
-    );
-
-    await prefs.setString(
-      'listenWindow',
-      listenWindowController.text,
-    );
-
-    await prefs.setString(
-      'timezone',
-      selectedTimezone,
-    );
-
-    await prefs.setString(
-      'configVersion',
-      configVersionController.text,
-    );
-
-    await prefs.setBool(
-      'useDeepSleep',
-      useDeepSleep,
-    );
-  }
-
-  // =====================================================
-  // BUAT DEVICE CONFIG
-  // =====================================================
-
-  Map<String, dynamic>
-      buildDeviceConfig() {
-    return {
-      'wifiSSID':
-          wifiSSIDController.text.trim(),
-
-      'wifiPassword':
-          wifiPasswordController.text,
-
-      'serverURL':
-          serverURLController.text.trim(),
-
-      'apiKey':
-          apiKeyController.text.trim(),
-
-      'uploadInterval':
-          int.parse(
-        uploadIntervalController.text,
-      ),
-
-      'listenWindow':
-          int.parse(
-        listenWindowController.text,
-      ),
-
-      'timezoneOffset':
-          timezoneOffsets[
-              selectedTimezone],
-
-      'configVersion':
-          int.parse(
-        configVersionController.text,
-      ),
-
-      'useDeepSleep':
-          useDeepSleep,
-    };
-  }
-
-  // =====================================================
-  // VALIDASI
-  // =====================================================
-
-  bool validateInput() {
-    if (wifiSSIDController.text
-        .trim()
-        .isEmpty) {
-      showError(
-        'WiFi SSID belum diisi.',
-      );
-
-      return false;
-    }
-
-    if (wifiPasswordController
-        .text
-        .isEmpty) {
-      showError(
-        'Password WiFi belum diisi.',
-      );
-
-      return false;
-    }
-
-    if (serverURLController.text
-        .trim()
-        .isEmpty) {
-      showError(
-        'Server URL belum diisi.',
-      );
-
-      return false;
-    }
-
-    if (apiKeyController.text
-        .trim()
-        .isEmpty) {
-      showError(
-        'API Key belum diisi.',
-      );
-
-      return false;
-    }
-
-    if (int.tryParse(
-          uploadIntervalController
-              .text,
-        ) ==
-        null) {
-      showError(
-        'Upload Interval harus berupa angka.',
-      );
-
-      return false;
-    }
-
-    if (int.tryParse(
-          listenWindowController
-              .text,
-        ) ==
-        null) {
-      showError(
-        'Listen Window harus berupa angka.',
-      );
-
-      return false;
-    }
-
-    if (int.tryParse(
-          configVersionController
-              .text,
-        ) ==
-        null) {
-      showError(
-        'Config Version harus berupa angka.',
-      );
-
-      return false;
-    }
-
-    return true;
-  }
-
-  // =====================================================
-  // SIMPAN DAN KIRIM
-  // =====================================================
-
-  Future<void>
-      saveAndSendConfiguration() async {
-    if (!validateInput()) {
-      return;
-    }
-
-    try {
-      setState(() {
-        isSending = true;
-      });
-
-      final config =
-          buildDeviceConfig();
-
-      print('================================');
-      print('DEVICE CONFIGURATION');
-      print(jsonEncode(config));
-      print('================================');
-
-      // Simpan lokal
-      await saveConfigurationLocally();
-
-      // Kirim ke cloud
-      await deviceConfigService
-          .sendDeviceConfig(
-        serverURL:
-            serverURLController.text
-                .trim(),
-
-        apiKey:
-            apiKeyController.text
-                .trim(),
-
-        config: config,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        isSending = false;
-      });
-
-      showSuccess(
-        'Konfigurasi berhasil dikirim ke cloud.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isSending = false;
-      });
-
-      showError(
-        'Gagal mengirim konfigurasi:\n$e',
-      );
-    }
-  }
-
-  // =====================================================
-  // SNACKBAR SUCCESS
-  // =====================================================
-
-  void showSuccess(
-    String message,
-  ) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-        ),
-
-        backgroundColor:
-            Colors.green,
-      ),
-    );
-  }
-
-  // =====================================================
-  // SNACKBAR ERROR
-  // =====================================================
-
-  void showError(
-    String message,
-  ) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-        ),
-
-        backgroundColor:
-            Colors.red,
-      ),
-    );
+    connectedWifi =
+        wifiSSIDController.text
+            .trim();
   }
 
   // =====================================================
@@ -466,21 +100,227 @@ class _WifiScreenState
 
   @override
   void dispose() {
-    wifiSSIDController.dispose();
+    wifiSSIDController
+        .dispose();
 
-    wifiPasswordController.dispose();
+    wifiPasswordController
+        .dispose();
 
-    serverURLController.dispose();
+    uploadIntervalController
+        .dispose();
 
-    apiKeyController.dispose();
+    listenWindowController
+        .dispose();
 
-    uploadIntervalController.dispose();
-
-    listenWindowController.dispose();
-
-    configVersionController.dispose();
+    sleepIntervalController
+        .dispose();
 
     super.dispose();
+  }
+
+  // =====================================================
+  // SNACKBAR
+  // =====================================================
+
+  void showMessage({
+    required String message,
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(
+      SnackBar(
+        content:
+            Text(
+          message,
+        ),
+
+        backgroundColor:
+            isError
+                ? Colors.red
+                : Colors.green,
+      ),
+    );
+  }
+
+  // =====================================================
+  // PARSE INTEGER
+  // =====================================================
+
+  int? parseInteger(
+    String value,
+  ) {
+    return int.tryParse(
+      value.trim(),
+    );
+  }
+
+  // =====================================================
+  // KIRIM KONFIGURASI
+  // =====================================================
+
+  Future<void>
+      sendConfiguration() async {
+    final wifiSSID =
+        wifiSSIDController.text
+            .trim();
+
+    final wifiPassword =
+        wifiPasswordController
+            .text;
+
+    final uploadInterval =
+        parseInteger(
+      uploadIntervalController
+          .text,
+    );
+
+    final listenWindow =
+        parseInteger(
+      listenWindowController
+          .text,
+    );
+
+    final sleepInterval =
+        parseInteger(
+      sleepIntervalController
+          .text,
+    );
+
+    // ===================================================
+    // VALIDASI WIFI
+    // ===================================================
+
+    if (wifiSSID.isEmpty) {
+      showMessage(
+        message:
+            'WiFi SSID harus diisi',
+        isError: true,
+      );
+
+      return;
+    }
+
+    if (wifiPassword.isEmpty) {
+      showMessage(
+        message:
+            'Password WiFi harus diisi',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ===================================================
+    // VALIDASI ADVANCED SETTINGS
+    // ===================================================
+
+    if (uploadInterval == null ||
+        uploadInterval < 0) {
+      showMessage(
+        message:
+            'Upload interval '
+            'harus berupa angka '
+            'positif',
+        isError: true,
+      );
+
+      return;
+    }
+
+    if (listenWindow == null ||
+        listenWindow < 0) {
+      showMessage(
+        message:
+            'Listen window '
+            'harus berupa angka '
+            'positif',
+        isError: true,
+      );
+
+      return;
+    }
+
+    if (sleepInterval == null ||
+        sleepInterval < 0) {
+      showMessage(
+        message:
+            'Sleep interval '
+            'harus berupa angka '
+            'positif atau 0',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ===================================================
+    // LOADING
+    // ===================================================
+
+    setState(() {
+      isSending = true;
+    });
+
+    try {
+      final result =
+          await apiService
+              .sendDeviceConfig(
+        wifiSSID:
+            wifiSSID,
+
+        wifiPassword:
+            wifiPassword,
+
+        uploadInterval:
+            uploadInterval,
+
+        listenWindow:
+            listenWindow,
+
+        sleepInterval:
+            sleepInterval,
+
+        useDeepSleep:
+            useDeepSleep,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSending = false;
+
+        connectedWifi =
+            wifiSSID;
+      });
+
+      showMessage(
+        message:
+            result['message']
+                    ?.toString() ??
+                'Konfigurasi '
+                    'berhasil dikirim',
+        isError: false,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSending = false;
+      });
+
+      showMessage(
+        message:
+            'Gagal mengirim '
+            'konfigurasi:\n'
+            '$error',
+        isError: true,
+      );
+    }
   }
 
   // =====================================================
@@ -491,686 +331,595 @@ class _WifiScreenState
   Widget build(
     BuildContext context,
   ) {
-    if (isLoading) {
-      return const Scaffold(
-        body: Center(
-          child:
-              CircularProgressIndicator(),
-        ),
-      );
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'WiFi Configuration',
+      appBar:
+          AppBar(
+        title:
+            const Text(
+          'WiFi Settings',
         ),
       ),
 
       body:
-          SingleChildScrollView(
-        padding:
-            const EdgeInsets.all(
-          20,
-        ),
-
+          SafeArea(
         child:
-            Column(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .stretch,
+            SingleChildScrollView(
+          padding:
+              const EdgeInsets.all(
+            18,
+          ),
 
-          children: [
-            _buildHeader(),
+          child:
+              Column(
+            crossAxisAlignment:
+                CrossAxisAlignment
+                    .stretch,
 
-            const SizedBox(
-              height: 24,
-            ),
+            children: [
+              // =========================================
+              // HEADER
+              // =========================================
 
-            _buildSectionTitle(
-              'WiFi Settings',
-              Icons.wifi,
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            _buildTextField(
-              controller:
-                  wifiSSIDController,
-
-              label:
-                  'WiFi SSID',
-
-              hint:
-                  'Masukkan nama WiFi',
-
-              icon:
-                  Icons.wifi,
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            _buildPasswordField(
-              controller:
-                  wifiPasswordController,
-
-              label:
-                  'WiFi Password',
-
-              obscure:
-                  obscureWifiPassword,
-
-              onToggle: () {
-                setState(() {
-                  obscureWifiPassword =
-                      !obscureWifiPassword;
-                });
-              },
-            ),
-
-            const SizedBox(
-              height: 28,
-            ),
-
-            _buildSectionTitle(
-              'Cloud Server',
-              Icons.cloud,
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            _buildTextField(
-              controller:
-                  serverURLController,
-
-              label:
-                  'Server URL',
-
-              hint:
-                  'https://example.com/api',
-
-              icon:
-                  Icons.link,
-
-              keyboardType:
-                  TextInputType.url,
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            _buildPasswordField(
-              controller:
-                  apiKeyController,
-
-              label:
-                  'API Key',
-
-              obscure:
-                  obscureApiKey,
-
-              onToggle: () {
-                setState(() {
-                  obscureApiKey =
-                      !obscureApiKey;
-                });
-              },
-            ),
-
-            const SizedBox(
-              height: 28,
-            ),
-
-            _buildSectionTitle(
-              'Device Settings',
-              Icons.settings,
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            _buildNumberField(
-              controller:
-                  uploadIntervalController,
-
-              label:
-                  'Upload Interval',
-
-              hint:
-                  'Dalam milidetik',
-
-              icon:
-                  Icons.upload,
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            _buildNumberField(
-              controller:
-                  listenWindowController,
-
-              label:
-                  'Listen Window',
-
-              hint:
-                  'Dalam milidetik',
-
-              icon:
-                  Icons.hearing,
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            _buildTimezoneDropdown(),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            _buildNumberField(
-              controller:
-                  configVersionController,
-
-              label:
-                  'Config Version',
-
-              hint:
-                  'Contoh: 1',
-
-              icon:
-                  Icons.numbers,
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            Card(
-              child:
-                  SwitchListTile(
-                title:
-                    const Text(
-                  'Deep Sleep',
-                ),
-
-                subtitle:
-                    const Text(
-                  'Aktifkan mode hemat energi',
-                ),
-
-                secondary:
-                    const Icon(
-                  Icons.battery_saver,
-                ),
-
-                value:
-                    useDeepSleep,
-
-                onChanged:
-                    (value) {
-                  setState(() {
-                    useDeepSleep =
-                        value;
-                  });
-                },
+              const Icon(
+                Icons.wifi,
+                size: 70,
+                color:
+                    Colors.blue,
               ),
-            ),
 
-            const SizedBox(
-              height: 24,
-            ),
+              const SizedBox(
+                height: 10,
+              ),
 
-            _buildConfigurationPreview(),
+              const Text(
+                'Konfigurasi Perangkat',
+                textAlign:
+                    TextAlign.center,
+                style:
+                    TextStyle(
+                  fontSize:
+                      24,
 
-            const SizedBox(
-              height: 24,
-            ),
+                  fontWeight:
+                      FontWeight.bold,
+                ),
+              ),
 
-            SizedBox(
-              height: 56,
+              const SizedBox(
+                height: 6,
+              ),
 
-              child:
-                  ElevatedButton.icon(
-                onPressed:
-                    isSending
-                        ? null
-                        : saveAndSendConfiguration,
+              const Text(
+                'Atur koneksi WiFi '
+                'dan pengaturan '
+                'operasi ESP32.',
+                textAlign:
+                    TextAlign.center,
+              ),
 
-                icon:
-                    isSending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth:
-                                  2,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.cloud_upload,
+              const SizedBox(
+                height: 22,
+              ),
+
+              // =========================================
+              // WIFI STATUS
+              // =========================================
+
+              _buildWiFiStatus(),
+
+              const SizedBox(
+                height: 16,
+              ),
+
+              // =========================================
+              // WIFI SETTINGS
+              // =========================================
+
+              Card(
+                child:
+                    Padding(
+                  padding:
+                      const EdgeInsets.all(
+                    17,
+                  ),
+
+                  child:
+                      Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .stretch,
+
+                    children: [
+                      const Text(
+                        'WiFi Settings',
+                        style:
+                            TextStyle(
+                          fontSize:
+                              18,
+
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 18,
+                      ),
+
+                      // =================================
+                      // WIFI SSID
+                      // =================================
+
+                      TextField(
+                        controller:
+                            wifiSSIDController,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'WiFi SSID',
+
+                          prefixIcon:
+                              Icon(
+                            Icons
+                                .wifi,
                           ),
 
-                label:
-                    Text(
-                  isSending
-                      ? 'Mengirim...'
-                      : 'Simpan & Kirim Konfigurasi',
+                          border:
+                              OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 15,
+                      ),
+
+                      // =================================
+                      // WIFI PASSWORD
+                      // =================================
+
+                      TextField(
+                        controller:
+                            wifiPasswordController,
+
+                        obscureText:
+                            obscurePassword,
+
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'WiFi Password',
+
+                          prefixIcon:
+                              const Icon(
+                            Icons.lock,
+                          ),
+
+                          border:
+                              const OutlineInputBorder(),
+
+                          suffixIcon:
+                              IconButton(
+                            onPressed:
+                                () {
+                              setState(
+                                () {
+                                  obscurePassword =
+                                      !obscurePassword;
+                                },
+                              );
+                            },
+
+                            icon:
+                                Icon(
+                              obscurePassword
+                                  ? Icons
+                                      .visibility
+                                  : Icons
+                                      .visibility_off,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  // =====================================================
-  // HEADER
-  // =====================================================
+              const SizedBox(
+                height: 14,
+              ),
 
-  Widget _buildHeader() {
-    return Card(
-      elevation:
-          2,
+              // =========================================
+              // ADVANCED SETTINGS
+              // =========================================
 
-      child:
-          Padding(
-        padding:
-            const EdgeInsets.all(
-          20,
-        ),
+              Card(
+                child:
+                    ExpansionTile(
+                  initiallyExpanded:
+                      isAdvancedExpanded,
 
-        child:
-            Column(
-          children: [
-            const Icon(
-              Icons.settings_remote,
-              size: 56,
-            ),
+                  onExpansionChanged:
+                      (value) {
+                    setState(
+                      () {
+                        isAdvancedExpanded =
+                            value;
+                      },
+                    );
+                  },
 
-            const SizedBox(
-              height: 12,
-            ),
+                  leading:
+                      const Icon(
+                    Icons
+                        .settings,
+                  ),
 
-            const Text(
-              'Device Configuration',
+                  title:
+                      const Text(
+                    'Advanced Settings',
+                    style:
+                        TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
 
-              style:
-                  TextStyle(
-                fontSize:
+                  subtitle:
+                      const Text(
+                    'Upload, listen, '
+                    'sleep, dan '
+                    'deep sleep',
+                  ),
+
+                  children: [
+                    Padding(
+                      padding:
+                          const EdgeInsets
+                              .fromLTRB(
+                        17,
+                        5,
+                        17,
+                        18,
+                      ),
+
+                      child:
+                          Column(
+                        children: [
+                          // =============================
+                          // UPLOAD INTERVAL
+                          // =============================
+
+                          TextField(
+                            controller:
+                                uploadIntervalController,
+
+                            keyboardType:
+                                TextInputType
+                                    .number,
+
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Upload Interval',
+
+                              helperText:
+                                  'Satuan: ms',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .cloud_upload,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                15,
+                          ),
+
+                          // =============================
+                          // LISTEN WINDOW
+                          // =============================
+
+                          TextField(
+                            controller:
+                                listenWindowController,
+
+                            keyboardType:
+                                TextInputType
+                                    .number,
+
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Listen Window',
+
+                              helperText:
+                                  'Satuan: ms',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .sensors,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                15,
+                          ),
+
+                          // =============================
+                          // SLEEP INTERVAL
+                          // =============================
+
+                          TextField(
+                            controller:
+                                sleepIntervalController,
+
+                            keyboardType:
+                                TextInputType
+                                    .number,
+
+                            decoration:
+                                const InputDecoration(
+                              labelText:
+                                  'Sleep Interval',
+
+                              helperText:
+                                  'Satuan: ms. '
+                                  'Isi 0 untuk '
+                                  'tidak tidur.',
+
+                              prefixIcon:
+                                  Icon(
+                                Icons
+                                    .bedtime,
+                              ),
+
+                              border:
+                                  OutlineInputBorder(),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height:
+                                8,
+                          ),
+
+                          // =============================
+                          // DEEP SLEEP
+                          // =============================
+
+                          SwitchListTile(
+                            contentPadding:
+                                EdgeInsets
+                                    .zero,
+
+                            title:
+                                const Text(
+                              'Use Deep Sleep',
+                            ),
+
+                            subtitle:
+                                Text(
+                              useDeepSleep
+                                  ? 'Deep sleep '
+                                      'aktif'
+                                  : 'Deep sleep '
+                                      'nonaktif',
+                            ),
+
+                            value:
+                                useDeepSleep,
+
+                            onChanged:
+                                (value) {
+                              setState(
+                                () {
+                                  useDeepSleep =
+                                      value;
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(
+                height:
                     22,
-
-                fontWeight:
-                    FontWeight.bold,
               ),
-            ),
 
-            const SizedBox(
-              height: 8,
-            ),
+              // =========================================
+              // SEND BUTTON
+              // =========================================
 
-            Text(
-              'Atur konfigurasi koneksi dan operasi perangkat.',
+              SizedBox(
+                height:
+                    54,
 
-              textAlign:
-                  TextAlign.center,
+                child:
+                    ElevatedButton.icon(
+                  onPressed:
+                      isSending
+                          ? null
+                          : sendConfiguration,
 
-              style:
-                  TextStyle(
-                color:
-                    Colors.grey.shade600,
+                  icon:
+                      isSending
+                          ? const SizedBox(
+                              width:
+                                  22,
+
+                              height:
+                                  22,
+
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth:
+                                    2,
+                              ),
+                            )
+                          : const Icon(
+                              Icons
+                                  .cloud_upload,
+                            ),
+
+                  label:
+                      Text(
+                    isSending
+                        ? 'MENGIRIM...'
+                        : 'SIMPAN & KIRIM '
+                            'KONFIGURASI',
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  // =====================================================
-  // SECTION TITLE
-  // =====================================================
-
-  Widget _buildSectionTitle(
-    String title,
-    IconData icon,
-  ) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-        ),
-
-        const SizedBox(
-          width: 8,
-        ),
-
-        Text(
-          title,
-
-          style:
-              const TextStyle(
-            fontSize:
-                20,
-
-            fontWeight:
-                FontWeight.bold,
+              const SizedBox(
+                height:
+                    20,
+              ),
+            ],
           ),
         ),
-      ],
-    );
-  }
-
-  // =====================================================
-  // TEXT FIELD
-  // =====================================================
-
-  Widget _buildTextField({
-    required TextEditingController
-        controller,
-
-    required String label,
-
-    required String hint,
-
-    required IconData icon,
-
-    TextInputType keyboardType =
-        TextInputType.text,
-  }) {
-    return TextField(
-      controller:
-          controller,
-
-      keyboardType:
-          keyboardType,
-
-      decoration:
-          InputDecoration(
-        labelText:
-            label,
-
-        hintText:
-            hint,
-
-        prefixIcon:
-            Icon(
-          icon,
-        ),
-
-        border:
-            const OutlineInputBorder(),
       ),
     );
   }
 
   // =====================================================
-  // NUMBER FIELD
+  // WIFI STATUS
   // =====================================================
 
-  Widget _buildNumberField({
-    required TextEditingController
-        controller,
+  Widget _buildWiFiStatus() {
+    final hasWiFi =
+        connectedWifi
+            .isNotEmpty;
 
-    required String label,
-
-    required String hint,
-
-    required IconData icon,
-  }) {
-    return TextField(
-      controller:
-          controller,
-
-      keyboardType:
-          TextInputType.number,
-
-      decoration:
-          InputDecoration(
-        labelText:
-            label,
-
-        hintText:
-            hint,
-
-        prefixIcon:
-            Icon(
-          icon,
-        ),
-
-        border:
-            const OutlineInputBorder(),
-      ),
-    );
-  }
-
-  // =====================================================
-  // PASSWORD FIELD
-  // =====================================================
-
-  Widget _buildPasswordField({
-    required TextEditingController
-        controller,
-
-    required String label,
-
-    required bool obscure,
-
-    required VoidCallback onToggle,
-  }) {
-    return TextField(
-      controller:
-          controller,
-
-      obscureText:
-          obscure,
-
-      decoration:
-          InputDecoration(
-        labelText:
-            label,
-
-        prefixIcon:
-            const Icon(
-          Icons.lock,
-        ),
-
-        suffixIcon:
-            IconButton(
-          icon:
-              Icon(
-            obscure
-                ? Icons.visibility
-                : Icons.visibility_off,
-          ),
-
-          onPressed:
-              onToggle,
-        ),
-
-        border:
-            const OutlineInputBorder(),
-      ),
-    );
-  }
-
-  // =====================================================
-  // TIMEZONE DROPDOWN
-  // =====================================================
-
-  Widget _buildTimezoneDropdown() {
-    return DropdownButtonFormField<
-        String>(
-      value:
-          selectedTimezone,
-
-      decoration:
-          const InputDecoration(
-        labelText:
-            'Timezone',
-
-        prefixIcon:
-            Icon(
-          Icons.access_time,
-        ),
-
-        border:
-            OutlineInputBorder(),
-      ),
-
-      items:
-          timezoneOffsets.keys
-              .map(
-        (timezone) {
-          return DropdownMenuItem<
-              String>(
-            value:
-                timezone,
-
-            child:
-                Text(
-              timezone,
-            ),
-          );
-        },
-      ).toList(),
-
-      onChanged:
-          (value) {
-        if (value == null) {
-          return;
-        }
-
-        setState(() {
-          selectedTimezone =
-              value;
-        });
-      },
-    );
-  }
-
-  // =====================================================
-  // PREVIEW
-  // =====================================================
-
-  Widget _buildConfigurationPreview() {
-    return Card(
-      color:
-          Colors.grey.shade100,
-
-      child:
-          Padding(
-        padding:
-            const EdgeInsets.all(
-          16,
-        ),
-
-        child:
-            Column(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
-
-          children: [
-            const Text(
-              'Configuration Preview',
-
-              style:
-                  TextStyle(
-                fontSize:
-                    18,
-
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-
-            const Divider(),
-
-            _previewRow(
-              'Upload Interval',
-
-              '${uploadIntervalController.text} ms',
-            ),
-
-            _previewRow(
-              'Listen Window',
-
-              '${listenWindowController.text} ms',
-            ),
-
-            _previewRow(
-              'Timezone',
-
-              '$selectedTimezone '
-                  '(${timezoneOffsets[selectedTimezone]} detik)',
-            ),
-
-            _previewRow(
-              'Config Version',
-
-              configVersionController.text,
-            ),
-
-            _previewRow(
-              'Deep Sleep',
-
-              useDeepSleep
-                  ? 'Aktif'
-                  : 'Nonaktif',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // =====================================================
-  // PREVIEW ROW
-  // =====================================================
-
-  Widget _previewRow(
-    String label,
-    String value,
-  ) {
-    return Padding(
+    return Container(
       padding:
-          const EdgeInsets.symmetric(
-        vertical: 4,
+          const EdgeInsets.all(
+        16,
+      ),
+
+      decoration:
+          BoxDecoration(
+        color:
+            hasWiFi
+                ? Colors.green
+                    .withValues(
+                    alpha:
+                        0.10,
+                  )
+                : Colors.grey
+                    .withValues(
+                    alpha:
+                        0.10,
+                  ),
+
+        borderRadius:
+            BorderRadius.circular(
+          14,
+        ),
+
+        border:
+            Border.all(
+          color:
+              hasWiFi
+                  ? Colors.green
+                  : Colors.grey,
+        ),
       ),
 
       child:
           Row(
-        mainAxisAlignment:
-            MainAxisAlignment
-                .spaceBetween,
-
         children: [
-          Text(
-            label,
+          CircleAvatar(
+            backgroundColor:
+                hasWiFi
+                    ? Colors.green
+                    : Colors.grey,
+
+            child:
+                Icon(
+              hasWiFi
+                  ? Icons
+                      .wifi
+                  : Icons
+                      .wifi_off,
+
+              color:
+                  Colors.white,
+            ),
           ),
 
-          Text(
-            value,
+          const SizedBox(
+            width:
+                13,
+          ),
 
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment
+                      .start,
+
+              children: [
+                Text(
+                  hasWiFi
+                      ? 'Konfigurasi WiFi'
+                      : 'Belum ada WiFi',
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+
+                    fontSize:
+                        16,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                      3,
+                ),
+
+                Text(
+                  hasWiFi
+                      ? connectedWifi
+                      : 'Masukkan SSID '
+                          'WiFi',
+                ),
+              ],
             ),
+          ),
+
+          Icon(
+            hasWiFi
+                ? Icons
+                    .check_circle
+                : Icons
+                    .info_outline,
+
+            color:
+                hasWiFi
+                    ? Colors.green
+                    : Colors.grey,
           ),
         ],
       ),

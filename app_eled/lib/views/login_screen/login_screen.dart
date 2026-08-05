@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
 import '../../widgets/navigationbar.dart';
 import '../register_screen/register_screen.dart';
 
@@ -22,32 +22,34 @@ class _LoginScreenState
   final passwordController =
       TextEditingController();
 
-  final AuthService authService =
-      AuthService();
+  final ApiService apiService =
+      ApiService();
 
   bool isLoading = false;
+
   bool obscurePassword = true;
-  bool rememberMe = true;
 
   @override
   void dispose() {
     identifierController.dispose();
     passwordController.dispose();
+
     super.dispose();
   }
 
   Future<void> login() async {
-    final identifier =
+    final username =
         identifierController.text.trim();
 
     final password =
         passwordController.text;
 
-    if (identifier.isEmpty ||
+    if (username.isEmpty ||
         password.isEmpty) {
       _showMessage(
-        'Username/email dan password harus diisi',
+        'Username dan password wajib diisi',
       );
+
       return;
     }
 
@@ -55,31 +57,54 @@ class _LoginScreenState
       isLoading = true;
     });
 
-    final result =
-        await authService.login(
-      identifier: identifier,
-      password: password,
-      rememberMe: rememberMe,
-    );
+    try {
+      final result =
+          await apiService.login(
+        username: username,
+        password: password,
+      );
 
-    if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-    setState(() {
-      isLoading = false;
-    });
+      if (!result['success']) {
+        setState(() {
+          isLoading = false;
+        });
 
-    if (!result.success) {
-      _showMessage(result.message);
-      return;
+        _showMessage(
+          result['message'] ??
+              'Login gagal',
+        );
+
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+      });
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              const NavigationMenu(),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+      });
+
+      _showMessage(
+        'Terjadi kesalahan: $error',
+      );
     }
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const NavigationMenu(),
-      ),
-    );
   }
 
   Future<void> openRegister() async {
@@ -92,32 +117,43 @@ class _LoginScreenState
       ),
     );
 
-    if (registeredUsername != null) {
+    if (registeredUsername != null &&
+        mounted) {
       identifierController.text =
           registeredUsername;
     }
   }
 
-  void _showMessage(String message) {
+  void _showMessage(
+    String message,
+  ) {
     ScaffoldMessenger.of(context)
         .showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(
+          message,
+        ),
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
+          child:
+              SingleChildScrollView(
             padding:
-                const EdgeInsets.all(24),
+                const EdgeInsets.all(
+              24,
+            ),
             child: Column(
               mainAxisAlignment:
-                  MainAxisAlignment.center,
+                  MainAxisAlignment
+                      .center,
               children: [
                 const Icon(
                   Icons.agriculture,
@@ -155,9 +191,9 @@ class _LoginScreenState
                   decoration:
                       const InputDecoration(
                     labelText:
-                        'Username / Email',
+                        'Username',
                     hintText:
-                        'Masukkan username atau email',
+                        'Masukkan username',
                     prefixIcon:
                         Icon(
                       Icons.person,
@@ -205,53 +241,33 @@ class _LoginScreenState
                 ),
 
                 const SizedBox(
-                  height: 8,
-                ),
-
-                Row(
-                  children: [
-                    Checkbox(
-                      value: rememberMe,
-                      onChanged: (value) {
-                        setState(() {
-                          rememberMe =
-                              value ?? false;
-                        });
-                      },
-                    ),
-
-                    const Text(
-                      'Ingat saya',
-                    ),
-                  ],
-                ),
-
-                const SizedBox(
-                  height: 20,
+                  height: 30,
                 ),
 
                 SizedBox(
                   width:
                       double.infinity,
                   height: 50,
-                  child: ElevatedButton(
+                  child:
+                      ElevatedButton(
                     onPressed:
                         isLoading
                             ? null
                             : login,
-                    child: isLoading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth:
-                                  2,
-                            ),
-                          )
-                        : const Text(
-                            'LOGIN',
-                          ),
+                    child:
+                        isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth:
+                                      2,
+                                ),
+                              )
+                            : const Text(
+                                'LOGIN',
+                              ),
                   ),
                 ),
 
@@ -261,15 +277,18 @@ class _LoginScreenState
 
                 Row(
                   mainAxisAlignment:
-                      MainAxisAlignment.center,
+                      MainAxisAlignment
+                          .center,
                   children: [
                     const Text(
                       'Belum punya akun?',
                     ),
+
                     TextButton(
                       onPressed:
                           openRegister,
-                      child: const Text(
+                      child:
+                          const Text(
                         'Daftar',
                       ),
                     ),

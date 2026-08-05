@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/auth_service.dart';
-
+import '../../services/api_service.dart';
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({
     super.key,
@@ -32,8 +31,8 @@ class _RegisterScreenState
   final confirmPasswordController =
       TextEditingController();
 
-  final AuthService authService =
-      AuthService();
+  final ApiService apiService =
+      ApiService();
 
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
@@ -106,18 +105,12 @@ class _RegisterScreenState
       isLoading = true;
     });
 
-    final result =
-        await authService.register(
-      firstName:
-          firstNameController.text,
-      lastName:
-          lastNameController.text,
-      username:
-          usernameController.text,
-      email:
-          emailController.text,
-      password:
-          passwordController.text,
+    final result = await apiService.register(
+      firstName: firstNameController.text.trim(),
+      lastName: lastNameController.text.trim(),
+      username: usernameController.text.trim(),
+      email: emailController.text.trim(),
+      password: passwordController.text,
     );
 
     if (!mounted) return;
@@ -126,8 +119,8 @@ class _RegisterScreenState
       isLoading = false;
     });
 
-    if (!result.success) {
-      _showMessage(result.message);
+    if (!result["success"]) {
+      _showMessage(result["message"]);
       return;
     }
 

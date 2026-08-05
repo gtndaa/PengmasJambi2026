@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../models/user_model.dart';
-import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
 import '../login_screen/login_screen.dart';
 
-class ProfileScreen
-    extends StatefulWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
   });
@@ -17,23 +16,30 @@ class ProfileScreen
 
 class _ProfileScreenState
     extends State<ProfileScreen> {
-  final AuthService authService =
-      AuthService();
+  final ApiService apiService =
+      ApiService();
 
-  late Future<UserModel?> userFuture;
+  late Future<UserModel?>
+      userFuture;
 
   @override
   void initState() {
     super.initState();
 
     userFuture =
-        authService.getCurrentUser();
+        apiService.getCurrentUser();
   }
 
-  Future<void> logout() async {
-    await authService.logout();
+  // =====================================================
+  // LOGOUT
+  // =====================================================
 
-    if (!mounted) return;
+  Future<void> logout() async {
+    await apiService.logout();
+
+    if (!mounted) {
+      return;
+    }
 
     Navigator.pushAndRemoveUntil(
       context,
@@ -46,7 +52,9 @@ class _ProfileScreenState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return SafeArea(
       child: FutureBuilder<UserModel?>(
         future: userFuture,
@@ -54,6 +62,10 @@ class _ProfileScreenState
           context,
           snapshot,
         ) {
+          // =================================================
+          // SAAT DATA MASIH DIMUAT
+          // =================================================
+
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const Center(
@@ -62,7 +74,11 @@ class _ProfileScreenState
             );
           }
 
-          final user =
+          // =================================================
+          // AMBIL DATA USER
+          // =================================================
+
+          final UserModel? user =
               snapshot.data;
 
           if (user == null) {
@@ -73,21 +89,44 @@ class _ProfileScreenState
             );
           }
 
-          final initial =
+          // =================================================
+          // NAMA UNTUK DITAMPILKAN
+          // =================================================
+
+          final String displayedName =
+              user.fullName.isNotEmpty
+                  ? user.fullName
+                  : user.username.isNotEmpty
+                      ? user.username
+                      : 'Nama belum tersedia';
+
+          // =================================================
+          // HURUF AWAL UNTUK AVATAR
+          // =================================================
+
+          final String initial =
               user.firstName.isNotEmpty
                   ? user.firstName[0]
                       .toUpperCase()
-                  : user.username[0]
-                      .toUpperCase();
+                  : user.username.isNotEmpty
+                      ? user.username[0]
+                          .toUpperCase()
+                      : '?';
 
           return SingleChildScrollView(
             padding:
-                const EdgeInsets.all(24),
+                const EdgeInsets.all(
+              24,
+            ),
             child: Column(
               children: [
                 const SizedBox(
                   height: 20,
                 ),
+
+                // =============================================
+                // FOTO PROFIL
+                // =============================================
 
                 CircleAvatar(
                   radius: 48,
@@ -106,8 +145,14 @@ class _ProfileScreenState
                   height: 16,
                 ),
 
+                // =============================================
+                // NAMA UTAMA
+                // =============================================
+
                 Text(
-                  user.fullName,
+                  displayedName,
+                  textAlign:
+                      TextAlign.center,
                   style:
                       const TextStyle(
                     fontSize: 24,
@@ -120,11 +165,16 @@ class _ProfileScreenState
                   height: 4,
                 ),
 
+                // =============================================
+                // USERNAME
+                // =============================================
+
                 Text(
                   '@${user.username}',
                   style:
                       const TextStyle(
-                    color: Colors.grey,
+                    color:
+                        Colors.grey,
                   ),
                 ),
 
@@ -132,46 +182,76 @@ class _ProfileScreenState
                   height: 32,
                 ),
 
+                // =============================================
+                // USERNAME
+                // =============================================
+
                 _ProfileItem(
                   icon:
                       Icons.person_outline,
-                  title: 'Username',
-                  value: user.username,
+                  title:
+                      'Username',
+                  value:
+                      user.username.isNotEmpty
+                          ? user.username
+                          : '-',
                 ),
 
                 const Divider(),
+
+                // =============================================
+                // EMAIL
+                // =============================================
 
                 _ProfileItem(
                   icon:
                       Icons.email_outlined,
-                  title: 'Email',
-                  value: user.email,
+                  title:
+                      'Email',
+                  value:
+                      user.email.isNotEmpty
+                          ? user.email
+                          : '-',
                 ),
 
                 const Divider(),
 
+                // =============================================
+                // NAMA
+                // =============================================
+
                 _ProfileItem(
                   icon:
                       Icons.badge_outlined,
-                  title: 'Nama',
-                  value: user.fullName,
+                  title:
+                      'Nama',
+                  value:
+                      displayedName,
                 ),
 
                 const SizedBox(
                   height: 40,
                 ),
 
+                // =============================================
+                // TOMBOL LOGOUT
+                // =============================================
+
                 SizedBox(
                   width:
                       double.infinity,
-                  height: 50,
+                  height:
+                      50,
                   child:
                       OutlinedButton.icon(
-                    onPressed: logout,
-                    icon: const Icon(
+                    onPressed:
+                        logout,
+                    icon:
+                        const Icon(
                       Icons.logout,
                     ),
-                    label: const Text(
+                    label:
+                        const Text(
                       'LOGOUT',
                     ),
                   ),
@@ -185,10 +265,16 @@ class _ProfileScreenState
   }
 }
 
+// =====================================================
+// WIDGET ITEM PROFIL
+// =====================================================
+
 class _ProfileItem
     extends StatelessWidget {
   final IconData icon;
+
   final String title;
+
   final String value;
 
   const _ProfileItem({
@@ -198,26 +284,38 @@ class _ProfileItem
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return ListTile(
       contentPadding:
           EdgeInsets.zero,
-      leading: CircleAvatar(
-        child: Icon(icon),
+
+      leading:
+          CircleAvatar(
+        child:
+            Icon(icon),
       ),
-      title: Text(
+
+      title:
+          Text(
         title,
         style:
             const TextStyle(
-          color: Colors.grey,
-          fontSize: 13,
+          color:
+              Colors.grey,
+          fontSize:
+              13,
         ),
       ),
-      subtitle: Text(
+
+      subtitle:
+          Text(
         value,
         style:
             const TextStyle(
-          fontSize: 16,
+          fontSize:
+              16,
           fontWeight:
               FontWeight.w600,
         ),

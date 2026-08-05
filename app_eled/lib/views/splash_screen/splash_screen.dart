@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
 import '../../widgets/navigationbar.dart';
 import '../login_screen/login_screen.dart';
 
@@ -11,14 +11,15 @@ class SplashScreen
   });
 
   @override
-  State<SplashScreen> createState() =>
-      _SplashScreenState();
+  State<SplashScreen>
+      createState() =>
+          _SplashScreenState();
 }
 
 class _SplashScreenState
     extends State<SplashScreen> {
-  final AuthService authService =
-      AuthService();
+  final ApiService apiService =
+      ApiService();
 
   @override
   void initState() {
@@ -27,8 +28,8 @@ class _SplashScreenState
     _checkSession();
   }
 
-  Future<void> _checkSession() async {
-    // Supaya splash tetap terlihat sebentar.
+  Future<void>
+      _checkSession() async {
     await Future.delayed(
       const Duration(
         seconds: 2,
@@ -36,27 +37,34 @@ class _SplashScreenState
     );
 
     final loggedIn =
-        await authService.isLoggedIn();
+        await apiService
+            .isLoggedIn();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => loggedIn
-            ? const NavigationMenu()
-            : const LoginScreen(),
+        builder: (_) =>
+            loggedIn
+                ? const NavigationMenu()
+                : const LoginScreen(),
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return const Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment:
-              MainAxisAlignment.center,
+              MainAxisAlignment
+                  .center,
           children: [
             Icon(
               Icons.cloud,
@@ -84,7 +92,8 @@ class _SplashScreenState
             Text(
               'ESP32 • AWS • BMKG',
               style: TextStyle(
-                color: Colors.grey,
+                color:
+                    Colors.grey,
               ),
             ),
 
