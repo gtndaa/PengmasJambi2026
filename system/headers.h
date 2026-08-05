@@ -29,8 +29,8 @@
 // =====================================================================
 #define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
 #define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
-#define SLEEP_INTERVAL_MS   300000     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
-#define LUX_INTERVAL        2000       // ms antar pembacaan lux
+#define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
+#define LUX_INTERVAL        0       // ms antar pembacaan lux
 
 #define TIMEZONE_OFFSET     0
 

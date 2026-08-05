@@ -3,7 +3,7 @@
 
 bool SDManager::begin() {
     SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-    if (!SD.begin(SD_CS)) {
+    if (!SD.begin(SD_CS, SPI, 1000000)) {
         present = false;
         return false;
     }

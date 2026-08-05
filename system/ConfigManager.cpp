@@ -19,8 +19,8 @@ bool ConfigManager::load(DeviceConfig& cfg) {
     cfg.mqttClientId = prefs.getString("mqttClientId", "");
     cfg.mqttUsername = prefs.getString("mqttUser", "");
     cfg.mqttPassword = prefs.getString("mqttPass", "");
-    cfg.uploadInterval = prefs.getULong("uploadInt", 60000);
-    cfg.listenWindow = prefs.getULong("listenWin", 30000);
+    cfg.uploadInterval = prefs.getULong("uploadInt", UPLOAD_INTERVAL_MS);
+    cfg.listenWindow = prefs.getULong("listenWin", LISTEN_WINDOW_MS);
     cfg.sleepInterval = prefs.getULong("sleepInt", SLEEP_INTERVAL_MS);
     cfg.useDeepSleep = prefs.getBool("useDeepSlp", true);
     cfg.configVersion = prefs.getUInt("cfgVersion", 0);

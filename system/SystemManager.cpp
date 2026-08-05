@@ -200,6 +200,7 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
 }
 
 void SystemManager::readLight(LightSensor& light) {
+    delay(200);
     lastWeather.light = light.readOnce();
 }
 
