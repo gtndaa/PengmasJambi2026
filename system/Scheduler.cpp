@@ -1,16 +1,5 @@
 #include "headers.h"
 
-uint32_t Scheduler::lastListenTime = 0;
-uint32_t Scheduler::lastUploadTime = 0;
-
-void Scheduler::setNextWake(uint32_t intervalMs) {
-    // Disimpan lewat RTCMemory (bukan variabel statis biasa) karena
-    // deep sleep menghapus RAM. Fungsi ini dipertahankan untuk
-    // kompatibilitas API; nilai efektif dihitung di
-    // SystemManager::computeNextSleepMs().
-    (void)intervalMs;
-}
-
 void Scheduler::goToSleep() {
     // Durasi dihitung berdasarkan hasil siklus terakhir (sinkronisasi
     // jadwal paket 48 detik, lihat SystemManager::computeNextSleepMs()).
@@ -44,20 +33,4 @@ void Scheduler::goToSleep(uint32_t sleepMs) {
 
     Serial.flush();
     pm.deepSleepNow();
-}
-
-bool Scheduler::isTimeToUpload() {
-    return (millis() - lastUploadTime >= UPLOAD_INTERVAL_MS);
-}
-
-bool Scheduler::isTimeToListen() {
-    return (millis() - lastListenTime >= LISTEN_WINDOW_MS);
-}
-
-void Scheduler::resetListenTimer() {
-    lastListenTime = millis();
-}
-
-void Scheduler::resetUploadTimer() {
-    lastUploadTime = millis();
 }

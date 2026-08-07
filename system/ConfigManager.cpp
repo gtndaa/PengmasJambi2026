@@ -48,12 +48,6 @@ bool ConfigManager::save(const DeviceConfig& cfg) {
     return true;
 }
 
-void ConfigManager::resetToDefault() {
-    DeviceConfig defaultCfg;
-    save(defaultCfg);
-    LOG_INFO("Config reset to default");
-}
-
 bool ConfigManager::updateFromJSON(const String& json) {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, json);

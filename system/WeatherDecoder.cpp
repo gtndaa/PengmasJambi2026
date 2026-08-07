@@ -76,7 +76,8 @@ bool WeatherDecoder::decodePacket(uint8_t* packet, uint8_t len, WeatherData& dat
     data.windDirection = packet[8] & 0x0F;
     data.windDeg    = data.windDirection * WIND_DEG_STEP;
     data.rainRaw    = rainRaw;
-    data.light      = 0; // akan diisi dari sensor terpisah
+    // data.light TIDAK disentuh di sini: nilainya sudah diisi lebih dulu
+    // oleh SystemManager::readLight() sebelum decodePacket() dipanggil.
 
     // Hitung delta rain dengan wrap-around
     float delta = 0.0f;

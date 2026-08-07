@@ -55,11 +55,6 @@ bool CC1101Driver::isPacketAvailable() {
     return false;
 }
 
-uint32_t CC1101Driver::getPulseDuration() {
-    // Tidak digunakan langsung, karena ISR menangani semua
-    return 0;
-}
-
 void CC1101Driver::resetPulseBuffer() {
     noInterrupts();
     pulseIdx = 0;

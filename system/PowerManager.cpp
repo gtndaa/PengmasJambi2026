@@ -31,11 +31,3 @@ void PowerManager::prepareDeepSleep(uint64_t wakeUpTimeUs) {
 void PowerManager::deepSleepNow() {
     esp_deep_sleep_start();
 }
-
-bool PowerManager::isLowPower() const {
-    return readSuperCapVoltage() < 3.0;
-}
-
-void PowerManager::setSleepInterval(uint64_t us) {
-    sleepInterval = us;
-}

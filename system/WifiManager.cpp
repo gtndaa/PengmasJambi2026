@@ -56,10 +56,6 @@ bool WifiManager::isConnected() const {
     return WiFi.status() == WL_CONNECTED;
 }
 
-String WifiManager::getLocalIP() const {
-    return WiFi.localIP().toString();
-}
-
 int WifiManager::getRSSI() const {
     return WiFi.RSSI();
 }

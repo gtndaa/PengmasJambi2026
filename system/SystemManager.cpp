@@ -2,7 +2,6 @@
 
 WeatherData SystemManager::lastWeather;
 DeviceStatus SystemManager::status;
-uint32_t SystemManager::lastUploadTime = 0;
 bool SystemManager::packetReceivedThisCycle = false;
 
 // State internal untuk siklus berjalan (tidak perlu di RTC memory karena
@@ -97,6 +96,12 @@ void SystemManager::run() {
 
     readLight(light);
 
+    if (packetReceivedThisCycle) {
+        if (!RTCMemory::pushPending(lastWeather)) {
+            LOG_WARN("Buffer pending penuh, data ini akan hilang jika belum diupload");
+        }
+    }
+
     // Simpan salinan lokal ke SD sebagai backup (opsional, tidak
     // menggagalkan siklus jika SD tidak ada).
     storeData();
@@ -163,18 +168,15 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
 
                         RTCMemory::setLastPacketEpoch(epoch);
                         RTCMemory::resetMissedCycles();
-                        if (!RTCMemory::pushPending(lastWeather)) {
-                            LOG_WARN("Buffer pending penuh, data ini akan hilang jika belum diupload");
-                        }
 
                         LOG_INFO("Paket diterima: T=%.1fC H=%d%% Wind=%.1fkm/h Rain=%.1fmm Batt=%s",
                                   lastWeather.temperature, lastWeather.humidity,
                                   lastWeather.windSpeed, lastWeather.rainTotal,
                                   lastWeather.batteryOk ? "OK" : "LOW");
 
-                        packetReceivedThisCycle = true;
                         got = true;
                         decoded = true;
+                        packetReceivedThisCycle = true;
                     }
                 }
             }
@@ -200,8 +202,8 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
 }
 
 void SystemManager::readLight(LightSensor& light) {
-    delay(200);
     lastWeather.light = light.readOnce();
+    delay(200);
 }
 
 void SystemManager::storeData() {

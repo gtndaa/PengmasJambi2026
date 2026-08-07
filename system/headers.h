@@ -30,7 +30,6 @@
 #define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
 #define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
 #define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
-#define LUX_INTERVAL        0       // ms antar pembacaan lux
 
 #define TIMEZONE_OFFSET     0
 
@@ -350,16 +349,12 @@ class LightSensor {
 public:
     bool begin();
     bool isReady() const;   // true jika begin() terakhir berhasil mendeteksi sensor
-    void update();          // baca lux jika interval terlewati
     float readOnce();       // baca sekali langsung (dipakai saat wake singkat)
-    float getLux() const;
-    void setInterval(uint32_t ms); // default LUX_INTERVAL
     void powerDown();       // matikan sensor sebelum deep sleep
 private:
     BH1750 sensor;
     float lux = 0.0f;
-    uint32_t lastRead = 0;
-    uint32_t interval = LUX_INTERVAL;
+    uint32_t readySince = 0;
     bool ready = false;
 };
 
@@ -369,7 +364,6 @@ public:
     bool begin();
     void setReceiveMode();
     bool isPacketAvailable();          // periksa GDO2/ interrupt
-    uint32_t getPulseDuration();       // baca durasi pulsa dari ISR
     void resetPulseBuffer();
     uint16_t getPulseCount();
     void copyPulses(uint32_t* dest, uint16_t maxCount);
@@ -414,11 +408,6 @@ public:
     float readSuperCapVoltage() const;     // volt
     void prepareDeepSleep(uint64_t wakeUpTimeUs);
     void deepSleepNow();
-    bool isLowPower() const;
-    void setSleepInterval(uint64_t us);
-private:
-    uint64_t sleepInterval = 0;
-    uint32_t lastWake = 0;
 };
 
 // --------------------------- 5.9 CloudAPI -----------------------------
@@ -472,7 +461,6 @@ public:
     bool begin(const char* namespaceName = "wscfg");
     bool load(DeviceConfig& cfg);
     bool save(const DeviceConfig& cfg);
-    void resetToDefault();
     bool updateFromJSON(const String& json);
 private:
     Preferences prefs;
@@ -496,7 +484,6 @@ public:
                               unsigned long timeoutMs = 15000);
 
     bool isConnected() const;
-    String getLocalIP() const;
     int getRSSI() const;
     void disconnect();
 };
@@ -504,11 +491,6 @@ public:
 // --------------------------- 5.12 Helpers ----------------------------
 class Helpers {
 public:
-    static String getTimestampStr(uint32_t epoch);
-    static uint32_t getEpochFromRTC();   // memerlukan RTCManager
-    static float mapf(float x, float in_min, float in_max, float out_min, float out_max);
-    static String toHex(uint8_t* data, uint8_t len);
-
     // Format "YYYY-MM-DD HH:MM:SS" dari epoch, sesuai format field
     // "datetime" pada backend SensorData (lihat esp_lambda_test payload).
     static String epochToDateTimeStr(uint32_t epoch);
@@ -537,31 +519,20 @@ public:
 private:
     static WeatherData lastWeather;
     static DeviceStatus status;
-    static uint32_t lastUploadTime;
     static bool packetReceivedThisCycle;
 };
 
 // --------------------------- 5.14 Scheduler --------------------------
 class Scheduler {
 public:
-    static void setNextWake(uint32_t intervalMs);
     static void goToSleep();                 // pakai durasi hasil SystemManager::computeNextSleepMs()
     static void goToSleep(uint32_t sleepMs);  // durasi eksplisit
-    static bool isTimeToUpload();
-    static bool isTimeToListen();
-    static void resetListenTimer();
-    static void resetUploadTimer();
-private:
-    static uint32_t lastListenTime;
-    static uint32_t lastUploadTime;
 };
 
 // --------------------------- 5.15 BootManager ------------------------
 class BootManager {
 public:
     static void init();
-    static void printSystemInfo();
-    static bool isFirstBoot();
     static uint32_t getBootCount();
 };
 

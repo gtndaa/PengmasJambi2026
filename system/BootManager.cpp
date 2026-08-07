@@ -8,17 +8,6 @@ void BootManager::init() {
     LOG_INFO("Free heap: %d", ESP.getFreeHeap());
 }
 
-void BootManager::printSystemInfo() {
-    Serial.printf("Project: %s v%s\n", PROJECT_NAME, FW_VERSION);
-    Serial.printf("Boot count: %d\n", RTCMemory::getBootCount());
-    Serial.printf("CPU: %d MHz\n", ESP.getCpuFreqMHz());
-    Serial.printf("Heap: %d\n", ESP.getFreeHeap());
-}
-
-bool BootManager::isFirstBoot() {
-    return RTCMemory::getBootCount() == 1;
-}
-
 uint32_t BootManager::getBootCount() {
     return RTCMemory::getBootCount();
 }
