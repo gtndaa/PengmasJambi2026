@@ -2,6 +2,9 @@
 #include <SPI.h>
 
 bool SDManager::begin() {
+    pinMode(CC1101_CSN, OUTPUT);
+    digitalWrite(CC1101_CSN, HIGH);
+
     SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
     if (!SD.begin(SD_CS, SPI, 1000000)) {
         present = false;
@@ -20,25 +23,6 @@ bool SDManager::appendRecord(const char* data) {
     size_t written = f.println(data);
     f.close();
     return written > 0;
-}
-
-bool SDManager::readAll(String& content) {
-    if (!present) return false;
-    File f = SD.open(filename.c_str(), FILE_READ);
-    if (!f) return false;
-    content = f.readString();
-    f.close();
-    return true;
-}
-
-bool SDManager::deleteFile() {
-    if (!present) return false;
-    return SD.remove(filename.c_str());
-}
-
-bool SDManager::flush() {
-    // Tidak ada operasi khusus untuk SD
-    return true;
 }
 
 // =====================================================================
@@ -121,47 +105,66 @@ uint16_t SDManager::queueCount() {
     return n;
 }
 
-void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining) {
+void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining,
+                            uint16_t maxRecords) {
     outSent = 0;
     outRemaining = 0;
     if (!present) return;
 
-    File f = SD.open(queueFilename.c_str(), FILE_READ);
-    if (!f) return; // belum ada antrian sama sekali, tidak masalah
+    // Proses SATU record tertua per iterasi, dan ketika record itu sukses terkirim,
+    // langsung tulis ulang queue.csv tanpa record tsb saat itu juga (bukan di akhir). 
+    for (uint16_t i = 0; (maxRecords == 0 || i < maxRecords); i++) {
+        File f = SD.open(queueFilename.c_str(), FILE_READ);
+        if (!f) break; // tidak ada antrian sama sekali
 
-    const char* tmpName = "/queue.tmp";
-    SD.remove(tmpName);
-    File tmp = SD.open(tmpName, FILE_WRITE);
-    if (!tmp) {
-        f.close();
-        return;
-    }
-
-    while (f.available()) {
-        String line = f.readStringUntil('\n');
-        line.trim();
-        if (line.length() == 0) continue;
+        String firstLine;
+        bool haveFirst = false;
+        while (f.available()) {
+            String line = f.readStringUntil('\n');
+            line.trim();
+            if (line.length() == 0) continue;
+            firstLine = line;
+            haveFirst = true;
+            break;
+        }
+        if (!haveFirst) { f.close(); break; } // antrian sudah kosong
 
         WeatherData d;
-        bool parsed = decodeRecord(line, d);
+        bool parsed = decodeRecord(firstLine, d);
         bool uploaded = parsed && api.uploadWeather(d);
 
-        if (uploaded) {
-            // Sudah masuk database di server -> tidak ditulis lagi ke
-            // tmp, artinya otomatis terhapus dari antrian SD.
-            outSent++;
-        } else {
-            // Gagal upload (atau baris rusak) -> simpan lagi supaya
-            // dicoba lagi di siklus upload berikutnya, tidak diam-diam
-            // hilang.
-            tmp.println(line);
-            outRemaining++;
+        if (!uploaded) {
+            // Gagal (WiFi/server bermasalah, atau baris rusak) -> hentikan
+            // batch ini, jangan paksa lanjut ke baris berikutnya kalau
+            // sinyalnya memang lagi jelek. Baris ini tidak disentuh sama
+            // sekali di file, dicoba lagi siklus berikutnya.
+            f.close();
+            break;
         }
+
+        outSent++;
+
+        // Sukses -> commit SEKARANG: tulis ulang queue.csv tanpa baris
+        // pertama ini (baris² sisanya disalin apa adanya).
+        const char* tmpName = "/queue.tmp";
+        SD.remove(tmpName);
+        File tmp = SD.open(tmpName, FILE_WRITE);
+        if (tmp) {
+            while (f.available()) {
+                String rest = f.readStringUntil('\n');
+                rest.trim();
+                if (rest.length() > 0) tmp.println(rest);
+            }
+            tmp.close();
+            f.close();
+            SD.remove(queueFilename.c_str());
+            SD.rename(tmpName, queueFilename.c_str());
+        } else {
+            f.close();
+        }
+
+        yield(); // beri jatah CPU ke task WiFi/lwIP tiap record
     }
 
-    f.close();
-    tmp.close();
-
-    SD.remove(queueFilename.c_str());
-    SD.rename(tmpName, queueFilename.c_str());
+    outRemaining = queueCount();
 }

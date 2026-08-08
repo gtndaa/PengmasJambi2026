@@ -10,7 +10,10 @@ bool RTCManager::begin() {
     }
     ok = true;
     if (rtc.lostPower()) {
-        // Set ke waktu kompilasi
+        LOG_WARN("RTC lostPower()=true -> waktu di-reset ke waktu KOMPILASI "
+                  "(%s %s), BUKAN waktu sekarang. Cek baterai backup CR2032 "
+                  "di modul DS3231 kalau ini sering muncul.",
+                  __DATE__, __TIME__);
         rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     }
     return true;

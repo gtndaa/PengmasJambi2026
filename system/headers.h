@@ -11,9 +11,7 @@
 #include <SmartRC_CC1101.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <PubSubClient.h>
 #include <Preferences.h>
-#include <functional>
 #include <esp_sleep.h>
 #include "secrets.h"
 
@@ -27,21 +25,19 @@
 // =====================================================================
 //  2. TIME CONFIG
 // =====================================================================
-#define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
-#define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
-#define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
+#define UPLOAD_INTERVAL_MS  60000       // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
+#define LISTEN_WINDOW_MS    48000       // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
+#define SLEEP_INTERVAL_MS   0           // fallback deep sleep jika radio tidak pernah sinkron
 
 #define TIMEZONE_OFFSET     0
 
-// ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) -------
-// Dari analisis log rtl_433-style: sensor cuaca (id 0x22 ch4) mengirim
-// paket kira-kira setiap 48 detik, kadang meleset (miss 1-3 siklus).
-// Strategi: setelah paket pertama berhasil didekode & timestamp RTC
-// diketahui, ESP32 memprediksi waktu paket berikutnya dan hanya
-// bangun sesaat sebelum itu (guard window), lalu deep sleep lagi.
-#define TX_PERIOD_MS            48000UL   // interval nominal transmisi sensor
-#define TX_JITTER_GUARD_MS      4000UL    // toleransi jitter di kedua sisi window
-#define WAKE_BEFORE_MS           1500UL   // bangun sedikit lebih awal dari prediksi
+// KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik)
+// Sensor cuaca WH5300 mengirim paket kira-kira setiap 48 detik, kadang meleset (miss 1-3 siklus).
+// Strategi: setelah paket pertama berhasil didekode & timestamp RTC diketahui, ESP32 memprediksi
+// waktu paket berikutnya dan hanya bangun sesaat sebelum itu (guard window), lalu deep sleep lagi.
+#define TX_PERIOD_MS             48000UL   // interval nominal transmisi sensor
+#define TX_JITTER_GUARD_MS        4000UL   // toleransi jitter setelah prediksi
+#define WAKE_BEFORE_MS            3000UL   // bangun lebih awal dari prediksi
 #define MAX_MISSED_CYCLES         3       // setelah sekian kali miss beruntun -> re-sync (dengar penuh 1 periode)
 #define MIN_SLEEP_MS              2000UL  // batas bawah supaya tidak sleep negatif/terlalu singkat
 #define PENDING_BUFFER_SIZE        8      // jumlah pembacaan yang ditampung di RTC memory sebelum upload
@@ -50,11 +46,9 @@
 // =====================================================================
 //  3. SERVER & API CONFIG
 // =====================================================================
-// URL ini sama dengan BASE_URL yang sudah diuji berhasil di esp_lambda_test.
+
 #define SERVER_URL          "https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws"
 #define API_KEY             "your-api-key"
-
-// Endpoint sesuai routes.js backend (JSON/routes/routes.js)
 #define ENDPOINT_SENSOR_POST   "/sensordata"       // POST data cuaca (SensorData model)
 #define ENDPOINT_SENSOR_GET    "/sensordata"       // GET data cuaca terbaru
 #define ENDPOINT_CONFIG_GET    "/config"           // GET konfigurasi device terbaru (DeviceConfig model: wifi + interval dsb)
@@ -83,7 +77,7 @@
 
 // ADC supercapacitor / baterai
 #define SUPERCAP_PIN        34
-#define BATTERY_PIN         34   // tidak ada pembagi tegangan terpisah di board ini; gunakan pin yang sama
+#define BATTERY_PIN         34
 
 // =====================================================================
 //  7. OTHER CONFIGS
@@ -171,11 +165,6 @@ struct DeviceConfig {
     String wifiPassword;
     String serverURL;
     String apiKey;
-    String mqttBroker;
-    uint16_t mqttPort = 1883;
-    String mqttClientId;
-    String mqttUsername;
-    String mqttPassword;
     unsigned long uploadInterval = UPLOAD_INTERVAL_MS;   // ms
     unsigned long listenWindow = LISTEN_WINDOW_MS;        // ms
     unsigned long sleepInterval = SLEEP_INTERVAL_MS;      // ms
@@ -187,8 +176,7 @@ struct DeviceConfig {
 };
 
 // 4.4 WifiCredentials
-// Struct minimal, hanya ssid + password. Dipakai oleh
-// WifiManager::connectWithFallback() untuk tes-konek SSID baru.
+
 struct WifiCredentials {
     String ssid;
     String password;
@@ -260,6 +248,7 @@ public:
     static uint8_t pendingCount();
     static bool getPending(uint8_t index, WeatherData& out);
     static void clearPending();
+    static void compactPending(const bool keep[], uint8_t count);
 
     // ---- akumulasi rain, tetap konsisten walau deep sleep ----
     static uint8_t getRainCounterPrev();
@@ -316,9 +305,6 @@ public:
     bool begin();
     bool isPresent() const;
     bool appendRecord(const char* data);      // tambahkan baris ke file log biasa
-    bool readAll(String& content);
-    bool deleteFile();
-    bool flush();
 
     // ---- Antrian data yang gagal terkirim, disimpan persisten di SD ----
     // (beda dengan RTC memory: RTC memory hilang kalau ESP32 benar-benar
@@ -332,7 +318,11 @@ public:
     // dicoba lagi di siklus upload berikutnya.
     // outSent  = jumlah yang berhasil terkirim & dihapus dari SD
     // outRemaining = jumlah yang masih tersisa di SD setelah percobaan ini
-    void queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining);
+    // maxRecords=0 berarti tanpa batas. Sengaja diberi default terbatas
+    // di pemanggil (lihat SystemManager::upload()) supaya satu siklus
+    // upload tidak memblokir radio terlalu lama kalau backlog besar.
+    void queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining,
+                     uint16_t maxRecords = 0);
 
 private:
     bool present = false;
@@ -411,23 +401,11 @@ public:
 };
 
 // --------------------------- 5.9 CloudAPI -----------------------------
-typedef std::function<void(const String& configJSON)> ConfigCallback;
-
 class CloudAPI {
 public:
-    CloudAPI(WiFiClient& client);
+    CloudAPI();
 
-    bool begin(const char* serverURL,
-               const char* apiKey,
-               const char* mqttBroker = nullptr,
-               uint16_t mqttPort = 1883,
-               const char* mqttClientId = nullptr,
-               const char* mqttUsername = nullptr,
-               const char* mqttPassword = nullptr);
-
-    bool connectMQTT();
-    bool disconnectMQTT();
-    bool isMQTTConnected() const;
+    bool begin(const char* serverURL, const char* apiKey);
 
     bool uploadWeather(const WeatherData& data);
     bool uploadStatus(const DeviceStatus& status);
@@ -437,21 +415,9 @@ public:
     // listenWindow, sleepInterval, configVersion, useDeepSleep.
     bool fetchRemoteConfig(RemoteConfig& out);
 
-    bool subscribe(const char* topic);
-    void setConfigCallback(ConfigCallback cb);
-    void loop();
-
 private:
     String server;
     String apiKey;
-    mutable PubSubClient mqttClient;
-    String mqttClientId;
-    String mqttUsername;
-    String mqttPassword;
-    ConfigCallback configCb;
-    static CloudAPI* instance;
-    static void mqttCallback(char* topic, byte* payload, unsigned int length);
-    void handleMessage(char* topic, byte* payload, unsigned int length);
 };
 
 // --------------------------- 5.10 ConfigManager ------------------------
@@ -483,7 +449,6 @@ public:
                               const char* fallbackPassword,
                               unsigned long timeoutMs = 15000);
 
-    bool isConnected() const;
     int getRSSI() const;
     void disconnect();
 };
@@ -501,9 +466,9 @@ public:
 };
 
 // --------------------------- 5.13 SystemManager ----------------------
-// Catatan arsitektur: ESP32 deep sleep = reset penuh (RAM hilang, hanya
+// Catatan: ESP32 deep sleep = reset penuh (RAM hilang, hanya
 // RTC memory yang bertahan). Karena itu SystemManager TIDAK berjalan
-// sebagai loop() terus-menerus; SystemManager::run() dieksekusi SEKALI
+// sebagai loop() terus-menerus; SystemManager::run() dieksekusi sekali
 // per siklus bangun (dipanggil dari setup()), lalu MCU deep sleep lagi
 // via Scheduler::goToSleep(). Semua state lintas-siklus (jadwal radio,
 // buffer upload, akumulasi hujan) disimpan di RTCMemory.
@@ -520,6 +485,10 @@ private:
     static WeatherData lastWeather;
     static DeviceStatus status;
     static bool packetReceivedThisCycle;
+    // Prediksi epoch transmisi berikutnya dari referensi paket valid
+    // terakhir. Dipakai baik untuk menentukan listenMs (run()) maupun
+    // durasi sleep (computeNextSleepMs())
+    static uint32_t predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now);
 };
 
 // --------------------------- 5.14 Scheduler --------------------------

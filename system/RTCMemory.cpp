@@ -110,6 +110,28 @@ void RTCMemory::clearPending() {
     rtcData->pendingLen = 0;
 }
 
+void RTCMemory::compactPending(const bool keep[], uint8_t count) {
+    // Menyusun ulang buffer supaya hanya menyisakan entri yang gagal
+    // dipindah/dikirim (keep[i]==true), digeser rapat ke depan. Dipakai
+    // supaya data yang gagal disimpan ke SD (mis. SPI/SD lagi bentrok
+    // dengan radio) tidak ikut hilang namun tetap bertahan di RTC memory
+    // untuk dicoba lagi siklus berikutnya
+    if (count > rtcData->pendingLen) count = rtcData->pendingLen;
+    uint8_t w = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        if (keep[i]) {
+            if (w != i) rtcData->pending[w] = rtcData->pending[i];
+            w++;
+        }
+    }
+    // Entri di luar `count` (kalau ada, seharusnya tidak pernah terjadi
+    // karena count == pendingLen saat dipanggil) ikut disalin apa adanya.
+    for (uint8_t i = count; i < rtcData->pendingLen; i++) {
+        rtcData->pending[w++] = rtcData->pending[i];
+    }
+    rtcData->pendingLen = w;
+}
+
 // ---------------- state decoder curah hujan ----------------
 
 uint8_t RTCMemory::getRainCounterPrev() {

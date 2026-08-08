@@ -11,10 +11,6 @@ static bool s_rtcOk = false;
 // =====================================================================
 // CATATAN ARSITEKTUR DUTY-CYCLE
 // =====================================================================
-// Dari analisis log paket radio sensor cuaca (id 0x22 ch4), transmisi
-// terjadi setiap ~48 detik (TX_PERIOD_MS) dengan jitter kecil dan sesekali
-// paket hilang. Karena ESP32 deep sleep = reset total (bukan loop yang
-// tertidur), strategi hemat dayanya adalah:
 //
 //   1. init()  -> inisialisasi minimal, baca state dari RTC memory
 //   2. run()   -> SATU siklus kerja: dengar radio, baca lux, (mungkin)
@@ -25,8 +21,7 @@ static bool s_rtcOk = false;
 // paket hilang), ESP32 mendengar penuh LISTEN_WINDOW_MS (30s) untuk
 // menangkap 1 paket dan mengunci sinkronisasi ke RTC (via
 // RTCMemory::setLastPacketEpoch). Setelah sinkron, ESP32 cukup bangun
-// sesaat sebelum jadwal prediksi (guard window TX_JITTER_GUARD_MS*2),
-// jauh lebih hemat daripada mendengar terus-menerus.
+// sesaat sebelum jadwal prediksi (guard window TX_JITTER_GUARD_MS*2)
 // =====================================================================
 
 void SystemManager::init() {
@@ -49,6 +44,13 @@ void SystemManager::init() {
 
     PowerManager pm;
     pm.begin();
+}
+
+uint32_t SystemManager::predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now) {
+    uint32_t periodSec = TX_PERIOD_MS / 1000UL;
+    uint32_t elapsed = (now >= lastPkt) ? (now - lastPkt) : 0;
+    uint32_t cyclesPassed = elapsed / periodSec;
+    return lastPkt + (cyclesPassed + 1) * periodSec;
 }
 
 void SystemManager::run() {
@@ -75,17 +77,17 @@ void SystemManager::run() {
     // Tentukan durasi window dengar radio berdasarkan status sinkronisasi.
     uint32_t listenMs;
     if (s_rtcOk && RTCMemory::isSynced()) {
-        // Sudah tahu jadwal transmisi -> cukup dengar sebentar di sekitar
-        // waktu prediksi (guard window mengakomodasi jitter timing sensor).
-        listenMs = TX_JITTER_GUARD_MS * 2;
-        LOG_INFO("Mode sinkron (missed=%d): dengar %lu ms",
-                 RTCMemory::getMissedCycles(), (unsigned long)listenMs);
+        uint32_t nowEpoch = rtc.now().unixtime();
+        uint32_t lastPkt = RTCMemory::getLastPacketEpoch();
+        uint32_t nextExpected = predictNextExpectedEpoch(lastPkt, nowEpoch);
+        uint32_t windowEndEpoch = nextExpected + (TX_JITTER_GUARD_MS / 1000UL) + 1;
+
+        int64_t remainMs = (int64_t)(windowEndEpoch - nowEpoch) * 1000LL;
+        listenMs = (remainMs > (int64_t)MIN_SLEEP_MS) ? (uint32_t)remainMs : MIN_SLEEP_MS;
+        LOG_INFO("Mode sinkron (missed=%d): target habis %lu s lagi -> dengar %lu ms",
+                 RTCMemory::getMissedCycles(), (unsigned long)(windowEndEpoch - nowEpoch),
+                 (unsigned long)listenMs);
     } else {
-        // Belum sinkron / RTC tidak tersedia / terlalu banyak paket
-        // hilang berturut-turut -> dengar penuh 1 periode transmisi
-        // untuk menangkap paket pertama dan membangun ulang sinkronisasi.
-        // Pakai cfg.listenWindow (bisa diatur dari server lewat GET
-        // /config), bukan macro tetap, supaya config remote berpengaruh.
         listenMs = cfg.listenWindow;
         LOG_INFO("Mode sinkronisasi ulang: dengar penuh %lu ms", (unsigned long)listenMs);
     }
@@ -112,7 +114,7 @@ void SystemManager::run() {
     uint32_t wake = RTCMemory::getWakeCounter();
     bool bufferFull = (RTCMemory::pendingCount() >= PENDING_BUFFER_SIZE);
     bool scheduledUpload = (wake % UPLOAD_EVERY_N_CYCLES == 0);
-    if ((scheduledUpload || bufferFull) && RTCMemory::pendingCount() > 0) {
+    if (scheduledUpload || bufferFull) {
         upload();
     }
 
@@ -141,6 +143,26 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
     uint32_t start = millis();
     bool got = false;
 
+    // predictedBefore dihitung dari lastPacketEpoch yg belum diupdate
+    // siklus ini, jadi ini representasi prediksi yang dipakai untuk
+    // memutuskan listenWindowMs di run().
+    uint32_t predictedBefore = 0;
+    bool havePrediction = false;
+    {
+        RTCManager rtcDiag;
+        if (rtcDiag.begin() && rtcDiag.isOK()) {
+            uint32_t nowEpoch = rtcDiag.now().unixtime();
+            uint32_t lastPktBefore = RTCMemory::getLastPacketEpoch();
+            if (lastPktBefore != 0) {
+                predictedBefore = predictNextExpectedEpoch(lastPktBefore, nowEpoch);
+                havePrediction = true;
+                LOG_INFO("Mulai dengar: now=%lu prediksi=%lu (margin %ld s), window=%lu ms",
+                          (unsigned long)nowEpoch, (unsigned long)predictedBefore,
+                          (long)predictedBefore - (long)nowEpoch, (unsigned long)listenWindowMs);
+            }
+        }
+    }
+
     while (millis() - start < listenWindowMs) {
         if (radio.isPacketAvailable()) {
             uint16_t count = radio.getPulseCount();
@@ -163,6 +185,11 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
                             epoch = millis() / 1000; // fallback tanpa RTC (tidak ideal utk sync)
                         }
                         lastWeather.timestamp = epoch;
+
+                        if (havePrediction) {
+                            LOG_INFO("Paket ditangkap: epoch=%lu, meleset %ld s dari prediksi",
+                                      (unsigned long)epoch, (long)epoch - (long)predictedBefore);
+                        }
 
                         decoder.saveRainStateToRTC();
 
@@ -221,12 +248,6 @@ void SystemManager::storeData() {
 
 void SystemManager::upload() {
     uint8_t count = RTCMemory::pendingCount();
-    if (count == 0) return;
-
-    DeviceConfig cfg;
-    ConfigManager config;
-    config.begin();
-    config.load(cfg);
 
     // SD dipakai sebagai penyimpanan PERSISTEN untuk data yang gagal
     // terkirim: beda dengan RTC memory yang hilang kalau ESP32 benar-benar
@@ -235,6 +256,16 @@ void SystemManager::upload() {
     SDManager sd;
     bool sdReady = sd.begin() && sd.isPresent();
     status.sdCardPresent = sdReady;
+
+    uint16_t sdBacklogBefore = sdReady ? sd.queueCount() : 0;
+    if (count == 0 && sdBacklogBefore == 0) {
+        return; // benar-benar tidak ada apa pun untuk dikirim
+    }
+
+    DeviceConfig cfg;
+    ConfigManager config;
+    config.begin();
+    config.load(cfg);
 
     // Konek pakai kredensial yang sudah diketahui berhasil (tersimpan di NVS,
     // default-nya dari secrets.h saat pertama kali boot).
@@ -245,34 +276,33 @@ void SystemManager::upload() {
             // Pindahkan semua data yang baru terkumpul ke SD supaya tidak
             // hilang walau terjadi reset/mati total sebelum sempat konek
             // lagi ke WiFi.
+            bool moved_[PENDING_BUFFER_SIZE] = {false};
             uint8_t moved = 0;
-            for (uint8_t i = 0; i < count; i++) {
+            for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) {
                 WeatherData d;
-                if (RTCMemory::getPending(i, d) && sd.queuePush(d)) moved++;
+                bool ok = RTCMemory::getPending(i, d) && sd.queuePush(d);
+                moved_[i] = ok;
+                if (ok) moved++;
             }
-            RTCMemory::clearPending();
-            LOG_WARN("%d/%d data dipindah ke SD (gagal WiFi), buffer RTC dikosongkan", moved, count);
+            
+            bool keep[PENDING_BUFFER_SIZE];
+            for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) keep[i] = !moved_[i];
+            RTCMemory::compactPending(keep, count);
+            LOG_WARN("%d/%d data dipindah ke SD (gagal WiFi), %d tetap di buffer RTC (SD gagal)",
+                      moved, count, count - moved);
         } else {
-            LOG_WARN("SD tidak tersedia, %d data tetap di RTC memory (berisiko hilang jika reset total)", count);
+            LOG_WARN("SD tidak tersedia & WiFi gagal -- %d data tetap di buffer RTC, dicoba lagi siklus berikutnya", count);
         }
         return;
     }
 
-    WiFiClient espClient;
-    CloudAPI api(espClient);
-    api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str(),
-              cfg.mqttBroker.c_str(), cfg.mqttPort,
-              cfg.mqttClientId.c_str(),
-              cfg.mqttUsername.c_str(), cfg.mqttPassword.c_str());
-
-    if (!cfg.mqttBroker.isEmpty()) {
-        api.connectMQTT();
-    }
+    CloudAPI api;
+    api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str());
 
     // ------------------------------------------------------------------
     // Sinkronisasi config dari server (GET /config), berbasis configVersion:
     //
-    //  - configVersion==0 di lokal artinya BELUM PERNAH sinkron sama
+    //  - configVersion==0 di lokal artinya belum pernah sinkron sama
     //    sekali (first init) -> hanya catat versi server, JANGAN ubah
     //    config lain dulu.
     //  - Kalau sudah pernah sinkron dan versi server BERBEDA dari yang
@@ -332,41 +362,45 @@ void SystemManager::upload() {
                 cfg.useDeepSleep = remote.useDeepSleep; changed = true;
             }
 
-            // Versi dicatat sebagai "sudah diproses" walau wifi gagal
-            // switch, supaya tidak diulang-ulang tes tiap siklus di
-            // versi yang sama. Kalau server memang mau device retry
-            // terus, server perlu menaikkan configVersion lagi.
             cfg.configVersion = remote.configVersion;
             config.save(cfg);
             LOG_INFO("Config version sekarang: v%u (%s)",
                       (unsigned)cfg.configVersion,
                       changed ? "ada perubahan diterapkan" : "tidak ada field lain yang berubah");
         }
-        // remote.configVersion == cfg.configVersion -> tidak ada perubahan, lewati diam-diam.
     }
 
     // 1) Kirim data yang baru terkumpul di siklus ini (RTC memory).
     uint8_t sent = 0;
-    for (uint8_t i = 0; i < count; i++) {
+    bool keepInRtc[PENDING_BUFFER_SIZE] = {false};
+    for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) {
         WeatherData d;
         if (!RTCMemory::getPending(i, d)) continue;
         if (api.uploadWeather(d)) {
             sent++;
-        } else if (sdReady) {
-            // Gagal terkirim -> simpan ke SD, dicoba lagi di siklus
-            // upload berikutnya (sesuai interval kirim), bukan hilang.
-            sd.queuePush(d);
+        } else if (sdReady && sd.queuePush(d)) {
+            // Sukses dipindah ke SD -> aman dibuang dari RTC memory.
+        } else {
+            // Gagal terkirim langsung DAN gagal juga dipindah ke SD
+            // (SD tidak ada, atau tulisnya sendiri gagal) -> wajib
+            // tetap di RTC memory, jangan sampai hilang.
+            keepInRtc[i] = true;
         }
     }
     uint8_t unsent = count - sent;
 
-    // 2) Coba kirim ulang antrian LAMA di SD (data dari siklus-siklus
+    // 2) Coba kirim ulang antrian lama di SD (data dari siklus-siklus
     //    sebelumnya yang gagal terkirim). Yang sukses (masuk database)
     //    otomatis dihapus dari SD oleh queueFlush(); yang masih gagal
     //    tetap tersimpan untuk dicoba lagi di interval berikutnya.
     uint16_t sdSent = 0, sdRemaining = 0;
     if (sdReady) {
-        sd.queueFlush(api, sdSent, sdRemaining);
+        // Batasi maks 20 record per siklus upload
+        static const uint16_t MAX_QUEUE_FLUSH_PER_CYCLE = 20;
+        sd.queueFlush(api, sdSent, sdRemaining, MAX_QUEUE_FLUSH_PER_CYCLE);
+        if (sdRemaining > 0) {
+            LOG_INFO("Backlog SD masih tersisa %u record, lanjut siklus upload berikutnya", sdRemaining);
+        }
     }
 
     status.wifiRSSI = (int8_t)wifi.getRSSI();
@@ -375,16 +409,16 @@ void SystemManager::upload() {
     if (unsent == 0) {
         RTCMemory::clearPending();
         LOG_INFO("Upload sukses: %d/%d data terkirim langsung", sent, count);
-    } else if (sdReady) {
-        // Sisa yang gagal sudah aman tersalin ke SD di atas, RTC memory
-        // boleh dikosongkan.
-        RTCMemory::clearPending();
-        LOG_WARN("Upload sebagian: %d/%d terkirim langsung, %d dipindah ke SD", sent, count, unsent);
     } else {
-        // Tanpa SD, satu-satunya tempat data tersisa adalah RTC memory
-        // (berisiko hilang jika terjadi reset total) -> jangan dikosongkan
-        // supaya masih ada kesempatan retry di siklus berikutnya.
-        LOG_WARN("Upload sebagian: %d/%d terkirim, SD tidak tersedia, %d tetap di RTC memory", sent, count, unsent);
+        RTCMemory::compactPending(keepInRtc, count);
+        uint8_t stillLost = 0;
+        for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) if (keepInRtc[i]) stillLost++;
+        if (stillLost > 0) {
+            LOG_WARN("Upload sebagian: %d/%d terkirim langsung, %d dipindah ke SD, %d TETAP di RTC (SD juga gagal)",
+                      sent, count, (count - sent - stillLost), stillLost);
+        } else {
+            LOG_WARN("Upload sebagian: %d/%d terkirim langsung, %d dipindah ke SD", sent, count, unsent);
+        }
     }
 
     if (sdSent > 0 || sdRemaining > 0) {
@@ -415,15 +449,7 @@ uint32_t SystemManager::computeNextSleepMs() {
 
     uint32_t now = rtc.now().unixtime();
     uint32_t lastPkt = RTCMemory::getLastPacketEpoch();
-    uint32_t periodSec = TX_PERIOD_MS / 1000UL;
-
-    // Bulatkan maju ke siklus TX_PERIOD_MS berikutnya dari referensi
-    // paket valid terakhir, sehingga tetap presisi walau ada beberapa
-    // siklus yang meleset (missed) dari jadwal.
-    uint32_t elapsed = (now >= lastPkt) ? (now - lastPkt) : 0;
-    uint32_t cyclesPassed = elapsed / periodSec;
-    uint32_t nextExpected = lastPkt + (cyclesPassed + 1) * periodSec;
-
+    uint32_t nextExpected = predictNextExpectedEpoch(lastPkt, now);
     int64_t sleepSec = (int64_t)nextExpected - (int64_t)now - (int64_t)(WAKE_BEFORE_MS / 1000UL);
     if (sleepSec < 0) sleepSec = 0;
 

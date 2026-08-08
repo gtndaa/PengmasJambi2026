@@ -39,10 +39,4 @@ float LightSensor::readOnce() {
     return lux;
 }
 
-void LightSensor::powerDown() {
-    // Library BH1750 yang dipakai tidak meng-expose mode POWER_DOWN secara
-    // publik (hanya Mode pembacaan seperti CONTINUOUS_HIGH_RES_MODE dll).
-    // Tidak masalah: board ini deep-sleep total, jalur daya BH1750 ikut
-    // mati bersama peripheral lain saat esp_deep_sleep_start(), jadi tidak
-    // perlu perintah power-down eksplisit lewat I2C.
-}
+void LightSensor::powerDown() {}

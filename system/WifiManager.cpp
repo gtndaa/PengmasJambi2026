@@ -52,10 +52,6 @@ bool WifiManager::connectWithFallback(const WifiCredentials& newCreds,
     return false;
 }
 
-bool WifiManager::isConnected() const {
-    return WiFi.status() == WL_CONNECTED;
-}
-
 int WifiManager::getRSSI() const {
     return WiFi.RSSI();
 }
