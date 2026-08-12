@@ -1,4 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';import 'dart:ui';
+
+import 'package:workmanager/workmanager.dart';
+
+import 'services/local_notification_service.dart';
+import 'services/weather_alert_monitor_service.dart';
+
 // =====================================================
 // SCREENS
 // =====================================================
@@ -13,16 +19,58 @@ import 'views/wifi_screen/wifi_screen.dart';
 
 import 'views/notification_screen/notification_screen.dart';
 
+const String weatherAlertTaskName = 'weatherAlertCheck';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    DartPluginRegistrant.ensureInitialized();
+
+    try {
+      await LocalNotificationService.initialize();
+
+      // FITUR ASLI
+      if (task == weatherAlertTaskName) {
+        await WeatherAlertMonitorService.checkAndNotify();
+      }
+
+      return true;
+    } catch (e) {
+      print('Background weather check failed: $e');
+      return false;
+    }
+  });
+}
+
 // =====================================================
 // MAIN
 // =====================================================
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(
-    const MyApp(),
+  await LocalNotificationService.initialize();
+
+  await Workmanager().initialize(
+    callbackDispatcher,
   );
+
+  await Workmanager().registerPeriodicTask(
+    'weather-alert-periodic',
+    weatherAlertTaskName,
+    frequency: const Duration(minutes: 15),
+    existingWorkPolicy:
+        ExistingPeriodicWorkPolicy.update,
+    constraints: Constraints(
+      networkType: NetworkType.connected,
+    ),
+  );
+
+runApp(const MyApp());
+
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await LocalNotificationService.requestPermission();
+  });
 }
 
 // =====================================================
