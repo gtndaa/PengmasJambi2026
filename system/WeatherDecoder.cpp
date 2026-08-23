@@ -43,7 +43,61 @@ bool WeatherDecoder::scanForPacket(uint8_t* bits, uint16_t bitCount,
     return false;
 }
 
-void WeatherDecoder::resetRainCounter(uint8_t initialCounter) {
+void WeatherDecoder::addToTieredAccumulators(float deltaMm, uint32_t epoch) {
+    // ---- rolling 1 jam: 12 sub-bucket @ 5 menit ----
+    uint32_t slot = epoch / RAIN_HOUR_BUCKET_SPAN_SEC;
+    uint8_t idx = (uint8_t)(slot % RAIN_HOUR_BUCKET_COUNT);
+    if (hourBucketSlot[idx] != slot) {
+        // Sub-bucket ini mewakili rentang 5-menit yang beda dari
+        // terakhir kali dipakai (baru pertama kali, atau sudah muter
+        // lagi setelah >1 jam) -> mulai dari 0 dulu.
+        hourBucket[idx] = 0.0f;
+        hourBucketSlot[idx] = slot;
+    }
+    hourBucket[idx] += deltaMm;
+
+    // ---- 24 jam / minggu / bulan: reset periodik dari titik acuan ----
+    // Catatan: ini BUKAN kalender asli (tidak selalu pas jam 00:00 /
+    // Senin / tanggal 1), tapi reset tiap genap 24 jam/7 hari/30 hari
+    // sejak titik acuan terakhir -- cukup untuk keperluan pemantauan
+    // tanpa perlu dekomposisi kalender penuh di firmware.
+    if (rain24hStart == 0 || epoch >= rain24hStart + SECONDS_PER_DAY) {
+        rain24h = 0.0f;
+        rain24hStart = epoch;
+    }
+    rain24h += deltaMm;
+
+    if (rainWeekStart == 0 || epoch >= rainWeekStart + SECONDS_PER_WEEK) {
+        rainWeek = 0.0f;
+        rainWeekStart = epoch;
+    }
+    rainWeek += deltaMm;
+
+    if (rainMonthStart == 0 || epoch >= rainMonthStart + SECONDS_PER_MONTH) {
+        rainMonth = 0.0f;
+        rainMonthStart = epoch;
+    }
+    rainMonth += deltaMm;
+}
+
+float WeatherDecoder::sumRollingHour(uint32_t epoch) {
+    uint32_t nowSlot = epoch / RAIN_HOUR_BUCKET_SPAN_SEC;
+    float total = 0.0f;
+    for (uint8_t i = 0; i < RAIN_HOUR_BUCKET_COUNT; i++) {
+        if (hourBucketSlot[i] == 0) continue; // belum pernah dipakai
+        uint32_t age = nowSlot - hourBucketSlot[i]; // unsigned, aman kalau underflow (jadi besar -> dianggap basi)
+        if (age >= RAIN_HOUR_BUCKET_COUNT) {
+            // Sudah >60 menit sejak sub-bucket ini terakhir dipakai
+            // (device lama tidak menangkap paket) -> basi, nolkan.
+            hourBucket[i] = 0.0f;
+            continue;
+        }
+        total += hourBucket[i];
+    }
+    return total;
+}
+
+void WeatherDecoder::resetRainCounter(uint16_t initialCounter) {
     rainCounterPrev = initialCounter;
     rainAccumulated = 0.0f;
 }
@@ -54,14 +108,34 @@ void WeatherDecoder::loadRainStateFromRTC() {
     // tidak reset ke 0 setiap kali deep sleep.
     rainCounterPrev = RTCMemory::getRainCounterPrev();
     rainAccumulated = RTCMemory::getRainAccumulated();
+    for (uint8_t i = 0; i < RAIN_HOUR_BUCKET_COUNT; i++) {
+        hourBucket[i] = RTCMemory::getRainHourBucket(i);
+        hourBucketSlot[i] = RTCMemory::getRainHourBucketSlot(i);
+    }
+    rain24h = RTCMemory::getRain24h();
+    rain24hStart = RTCMemory::getRain24hStartEpoch();
+    rainWeek = RTCMemory::getRainWeek();
+    rainWeekStart = RTCMemory::getRainWeekStartEpoch();
+    rainMonth = RTCMemory::getRainMonth();
+    rainMonthStart = RTCMemory::getRainMonthStartEpoch();
 }
 
 void WeatherDecoder::saveRainStateToRTC() {
     RTCMemory::setRainCounterPrev(rainCounterPrev);
     RTCMemory::setRainAccumulated(rainAccumulated);
+    for (uint8_t i = 0; i < RAIN_HOUR_BUCKET_COUNT; i++) {
+        RTCMemory::setRainHourBucket(i, hourBucket[i], hourBucketSlot[i]);
+    }
+    RTCMemory::setRain24h(rain24h, rain24hStart);
+    RTCMemory::setRainWeek(rainWeek, rainWeekStart);
+    RTCMemory::setRainMonth(rainMonth, rainMonthStart);
+    // Write-through ke NVS (flash) supaya rain state tidak hilang kalau
+    // device sempat cold-boot (mati listrik sesaat, brownout, dsb) --
+    // beda dengan RTC memory yang otomatis terhapus di kondisi itu.
+    RTCMemory::persistRainStateToNVS();
 }
 
-bool WeatherDecoder::decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulatedRef) {
+bool WeatherDecoder::decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulatedRef, uint32_t epoch) {
     if (len < 10) return false;
 
     data.sensorId   = packet[1];
@@ -70,27 +144,71 @@ bool WeatherDecoder::decodePacket(uint8_t* packet, uint8_t len, WeatherData& dat
     data.humidity   = packet[3];
     data.windSpeed  = packet[4] * WIND_FACTOR;
     data.windGust   = packet[5] * WIND_FACTOR;
-    uint8_t rainRaw = packet[6];
-    data.batteryOk  = (packet[7] & 0x80) != 0;
-    data.channel    = (packet[7] >> 4) & 0x07;
+    // Rain counter TERNYATA 16-bit: byte tinggi packet[6], byte rendah
+    // packet[7] -- bukan packet[6] 8-bit sendirian seperti sebelumnya.
+    // Terverifikasi lewat perbandingan langsung dengan alat referensi
+    // bawaan (rasio delta_counter/delta_mm_referensi = 3.333 = 1/0.3
+    // persis, konsisten di semua sample data lapangan).
+    uint16_t rainRaw = ((uint16_t)packet[6] << 8) | packet[7];
+    // Baterai & channel TERNYATA ada di nibble atas packet[8] (bukan
+    // packet[7] -- itu sudah dipakai rain counter di atas). Nibble
+    // bawah packet[8] tetap wind direction, tidak berubah.
+    data.batteryOk  = (packet[8] & 0x80) != 0;
+    data.channel    = (packet[8] >> 4) & 0x07;
     data.windDirection = packet[8] & 0x0F;
     data.windDeg    = data.windDirection * WIND_DEG_STEP;
     data.rainRaw    = rainRaw;
     // data.light TIDAK disentuh di sini: nilainya sudah diisi lebih dulu
     // oleh SystemManager::readLight() sebelum decodePacket() dipanggil.
 
-    // Hitung delta rain dengan wrap-around
+    // Hitung delta rain dengan wrap-around (sekarang 16-bit: wrap di
+    // 65536, bukan 256 seperti sebelumnya).
+    //
+    // PENTING -- plausibility guard: CRC-8 itu proteksi lemah (~1/256
+    // peluang byte acak/rusak kebetulan lolos cek). Kalau ada gangguan
+    // sinyal/tegangan sesaat saat menangkap pulsa radio (pernah
+    // teramati lewat karakter sampah di Serial persis di sekitar
+    // kejadian rain_raw meloncat salah), sebagian bit paket bisa rusak
+    // tapi TETAP lolos CRC-8 secara kebetulan. Untuk field lain
+    // (suhu/kelembapan) ini cuma bikin SATU bacaan sesaat salah, lalu
+    // "sembuh sendiri" di paket berikutnya. Tapi rain itu STATEFUL --
+    // delta dihitung dari selisih ke bacaan sebelumnya -- jadi SATU
+    // paket rusak (mis. rainRaw jatuh ke 0 padahal counter asli ~450)
+    // bisa merusak rainAccumulated secara PERMANEN kalau diterima
+    // mentah-mentah. Maka sebelum commit ke rainCounterPrev, cek dulu
+    // apakah lonjakan/dip-nya masuk akal secara fisik dalam satu
+    // siklus radio (~TX_PERIOD_MS): kalau tidak, buang bacaan ini
+    // KHUSUS untuk rain (field lain di packet ini tetap dipakai apa
+    // adanya), pertahankan rainCounterPrev/rainAccumulated seperti
+    // sebelumnya, dan coba lagi di paket berikutnya.
+    static const uint16_t MAX_PLAUSIBLE_RAIN_DIFF_PER_CYCLE = 200; // ~60mm/siklus 48s, sangat generous utk badai ekstrem
     float delta = 0.0f;
     if (rainCounterPrev != RAIN_UNINIT) {
-        uint8_t prev = rainCounterPrev;
+        uint16_t prev = rainCounterPrev;
         if (rainRaw != prev) {
-            uint8_t diff = (rainRaw > prev) ? (rainRaw - prev) : (uint8_t)(256 - prev + rainRaw);
+            uint16_t diff = (rainRaw > prev) ? (rainRaw - prev) : (uint16_t)(65536UL - prev + rainRaw);
+            if (diff > MAX_PLAUSIBLE_RAIN_DIFF_PER_CYCLE) {
+                LOG_WARN("Rain counter meloncat tidak wajar (%u -> %u, diff=%u), diabaikan -- "
+                          "kemungkinan paket rusak lolos CRC", prev, rainRaw, diff);
+                data.rainRaw = prev; // laporkan counter LAMA yang masih dipercaya, bukan yang rusak
+                data.rainDelta = sumRollingHour(epoch); // tetap kirim rolling 1h yang valid, cuma tidak nambah apa-apa
+                data.rainTotal = rainAccumulated;
+                rainAccumulatedRef = rainAccumulated;
+                return true; // field lain di paket ini (suhu dkk) tetap valid & dipakai
+            }
             delta = diff * RAIN_MM_PER_TIP;
             rainAccumulated += delta;
         }
     }
     rainCounterPrev = rainRaw;
-    data.rainDelta = delta;
+    if (delta > 0.0f) {
+        addToTieredAccumulators(delta, epoch);
+    }
+    // rain_delta yang dikirim ke server = akumulasi ROLLING 1 JAM
+    // TERAKHIR (bukan delta per-paket lagi seperti sebelumnya). Struktur
+    // JSON tetap sama (field rain_delta & rain_total tidak berubah),
+    // cuma makna rain_delta yang disesuaikan atas permintaan.
+    data.rainDelta = sumRollingHour(epoch);
     data.rainTotal = rainAccumulated;
     rainAccumulatedRef = rainAccumulated;
     return true;

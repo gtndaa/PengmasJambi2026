@@ -74,7 +74,7 @@ bool SDManager::decodeRecord(const String& line, WeatherData& out) {
     out.windDeg        = parts[6].toFloat();
     out.rainDelta      = parts[7].toFloat();
     out.rainTotal      = parts[8].toFloat();
-    out.rainRaw        = (uint8_t)parts[9].toInt();
+    out.rainRaw        = (uint16_t)parts[9].toInt();
     out.light          = parts[10].toFloat();
     out.channel        = (uint8_t)parts[11].toInt();
     out.batteryOk      = parts[12].toInt() != 0;

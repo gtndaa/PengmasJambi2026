@@ -175,15 +175,16 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
                 uint8_t packet[MAX_BYTES];
                 uint8_t pktLen;
                 if (decoder.scanForPacket(bits, bitCount, packet, &pktLen)) {
+                    RTCManager rtc;
+                    uint32_t epoch;
+                    if (rtc.begin() && rtc.isOK()) {
+                        epoch = rtc.now().unixtime();
+                    } else {
+                        epoch = millis() / 1000; // fallback tanpa RTC (tidak ideal utk sync)
+                    }
+
                     float rainAcc;
-                    if (decoder.decodePacket(packet, pktLen, lastWeather, rainAcc)) {
-                        RTCManager rtc;
-                        uint32_t epoch;
-                        if (rtc.begin() && rtc.isOK()) {
-                            epoch = rtc.now().unixtime();
-                        } else {
-                            epoch = millis() / 1000; // fallback tanpa RTC (tidak ideal utk sync)
-                        }
+                    if (decoder.decodePacket(packet, pktLen, lastWeather, rainAcc, epoch)) {
                         lastWeather.timestamp = epoch;
 
                         if (havePrediction) {
@@ -368,6 +369,7 @@ void SystemManager::upload() {
                       (unsigned)cfg.configVersion,
                       changed ? "ada perubahan diterapkan" : "tidak ada field lain yang berubah");
         }
+        // remote.configVersion == cfg.configVersion -> tidak ada perubahan, lewati diam-diam.
     }
 
     // 1) Kirim data yang baru terkumpul di siklus ini (RTC memory).

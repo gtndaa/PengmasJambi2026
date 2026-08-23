@@ -13,6 +13,8 @@
 #include <WiFiClient.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
+#include <time.h>
 #include "secrets.h"
 
 // =====================================================================
@@ -25,20 +27,46 @@
 // =====================================================================
 //  2. TIME CONFIG
 // =====================================================================
-#define UPLOAD_INTERVAL_MS  60000       // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
-#define LISTEN_WINDOW_MS    48000       // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
-#define SLEEP_INTERVAL_MS   0           // fallback deep sleep jika radio tidak pernah sinkron
+#define UPLOAD_INTERVAL_MS  60000      // upload setiap 60 detik (dipakai sebagai target, dibulatkan ke siklus paket)
+#define LISTEN_WINDOW_MS    48000      // durasi mendengar radio saat SINKRONISASI AWAL (belum tahu jadwal sensor)
+#define SLEEP_INTERVAL_MS   0     // fallback deep sleep jika radio tidak pernah sinkron (5 menit)
 
 #define TIMEZONE_OFFSET     0
 
-// KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik)
-// Sensor cuaca WH5300 mengirim paket kira-kira setiap 48 detik, kadang meleset (miss 1-3 siklus).
-// Strategi: setelah paket pertama berhasil didekode & timestamp RTC diketahui, ESP32 memprediksi
-// waktu paket berikutnya dan hanya bangun sesaat sebelum itu (guard window), lalu deep sleep lagi.
+// ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) -------
+// Dari analisis log rtl_433-style: sensor cuaca (id 0x22 ch4) mengirim
+// paket kira-kira setiap 48 detik, kadang meleset (miss 1-3 siklus).
+// Strategi: setelah paket pertama berhasil didekode & timestamp RTC
+// diketahui, ESP32 memprediksi waktu paket berikutnya dan hanya
+// bangun sesaat sebelum itu (guard window), lalu deep sleep lagi.
 #define TX_PERIOD_MS             48000UL   // interval nominal transmisi sensor
-#define TX_JITTER_GUARD_MS        4000UL   // toleransi jitter setelah prediksi
-#define WAKE_BEFORE_MS            3000UL   // bangun lebih awal dari prediksi
+#define TX_JITTER_GUARD_MS        5000UL   // toleransi jitter DI SISI SETELAH prediksi
+                                            // (dulu 4000; dinaikkan sedikit sbg
+                                            // pengaman ekstra jitter oscillator TX asli)
+#define WAKE_BEFORE_MS            4000UL   // bangun lebih awal dari prediksi.
+                                            // Dulu 1500ms -- ternyata jauh kurang:
+                                            // rtc.now() hanya presisi 1 detik penuh
+                                            // (kuantisasi s/d 999ms), plus overhead
+                                            // boot+init (delay(200) eksplisit + I2C/SPI
+                                            // RTC/CC1101/BH1750) yang selama ini tidak
+                                            // pernah dikurangkan dari margin ini. Net
+                                            // effect: window dengar mulai jauh lebih
+                                            // telat dari prediksi daripada yang
+                                            // diasumsikan, sehingga TX yang datang pas
+                                            // atau lebih awal dari jadwal keburu lewat
+                                            // sebelum radio mulai listen.
 #define MAX_MISSED_CYCLES         3       // setelah sekian kali miss beruntun -> re-sync (dengar penuh 1 periode)
+
+// ---- NTP time sync (dipakai untuk koreksi drift RTC & recovery pasca-brownout) ----
+// Server NTP publik + timeout tunggu respons. gmtOffset diset ke WIB
+// (UTC+7) karena seluruh sistem sejauh ini konsisten memakai waktu
+// lokal WIB (bukan UTC) -- cocokkan kalau device dipasang di zona lain.
+#define NTP_SERVER_1              "pool.ntp.org"
+#define NTP_SERVER_2              "time.google.com"
+#define NTP_SERVER_3              "time.cloudflare.com"
+#define NTP_GMT_OFFSET_SEC        (7 * 3600L)   // WIB = UTC+7
+#define NTP_DAYLIGHT_OFFSET_SEC   0              // Indonesia tidak pakai DST
+#define NTP_SYNC_TIMEOUT_MS       5000UL
 #define MIN_SLEEP_MS              2000UL  // batas bawah supaya tidak sleep negatif/terlalu singkat
 #define PENDING_BUFFER_SIZE        8      // jumlah pembacaan yang ditampung di RTC memory sebelum upload
 #define UPLOAD_EVERY_N_CYCLES ((UPLOAD_INTERVAL_MS + TX_PERIOD_MS - 1) / TX_PERIOD_MS) // ~ setiap berapa siklus 48s baru upload
@@ -46,9 +74,11 @@
 // =====================================================================
 //  3. SERVER & API CONFIG
 // =====================================================================
-
+// URL ini sama dengan BASE_URL yang sudah diuji berhasil di esp_lambda_test.
 #define SERVER_URL          "https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws"
 #define API_KEY             "your-api-key"
+
+// Endpoint sesuai routes.js backend (JSON/routes/routes.js)
 #define ENDPOINT_SENSOR_POST   "/sensordata"       // POST data cuaca (SensorData model)
 #define ENDPOINT_SENSOR_GET    "/sensordata"       // GET data cuaca terbaru
 #define ENDPOINT_CONFIG_GET    "/config"           // GET konfigurasi device terbaru (DeviceConfig model: wifi + interval dsb)
@@ -77,7 +107,7 @@
 
 // ADC supercapacitor / baterai
 #define SUPERCAP_PIN        34
-#define BATTERY_PIN         34
+#define BATTERY_PIN         34   // tidak ada pembagi tegangan terpisah di board ini; gunakan pin yang sama
 
 // =====================================================================
 //  7. OTHER CONFIGS
@@ -103,7 +133,21 @@
 #define TEMP_DIVISOR        10.0f
 #define WIND_DEG_STEP       22.5f
 
-#define RAIN_UNINIT         0xFF
+// PENTING: rain counter di paket radio ternyata 16-bit (byte tinggi di
+// packet[6], byte rendah di packet[7]), BUKAN 8-bit di packet[6] saja
+// seperti asumsi sebelumnya. Terverifikasi dari perbandingan delta
+// counter vs pembacaan alat referensi bawaan -- rasio delta_counter /
+// delta_mm_referensi persis 3.333 (=1/0.3) di 9 dari 9 titik data
+// sample real, HANYA cocok kalau counter dibaca sebagai 16-bit
+// gabungan packet[6]:packet[7], bukan packet[6] sendirian.
+#define RAIN_UNINIT         0xFFFF
+
+// Akumulator rain bertingkat (lihat RTCMemory::RTCData & WeatherDecoder)
+#define RAIN_HOUR_BUCKET_COUNT      12      // 12 x 5 menit = rolling 60 menit
+#define RAIN_HOUR_BUCKET_SPAN_SEC   300UL   // 5 menit per sub-bucket
+#define SECONDS_PER_DAY             86400UL
+#define SECONDS_PER_WEEK            604800UL
+#define SECONDS_PER_MONTH           2592000UL // approksimasi 30 hari (kalender bulan asli bervariasi 28-31 hari)
 
 #define CRC_POLY            0x31
 #define CRC_INIT            0x00
@@ -136,7 +180,7 @@ struct WeatherData {
     float    windDeg;            // derajat
     float    rainDelta;          // mm sejak terakhir
     float    rainTotal;          // mm akumulasi
-    uint8_t  rainRaw;            // counter mentah
+    uint16_t rainRaw;            // counter mentah, 16-bit (packet[6]:packet[7])
     float    light;              // lux
     uint8_t  sensorId;
     uint8_t  channel;
@@ -176,7 +220,8 @@ struct DeviceConfig {
 };
 
 // 4.4 WifiCredentials
-
+// Struct minimal, hanya ssid + password. Dipakai oleh
+// WifiManager::connectWithFallback() untuk tes-konek SSID baru.
 struct WifiCredentials {
     String ssid;
     String password;
@@ -251,10 +296,28 @@ public:
     static void compactPending(const bool keep[], uint8_t count);
 
     // ---- akumulasi rain, tetap konsisten walau deep sleep ----
-    static uint8_t getRainCounterPrev();
-    static void setRainCounterPrev(uint8_t v);
+    static uint16_t getRainCounterPrev();
+    static void setRainCounterPrev(uint16_t v);
     static float getRainAccumulated();
     static void setRainAccumulated(float v);
+    static void persistRainStateToNVS();
+
+    // ---- akumulator bertingkat ----
+    static float getRainHourBucket(uint8_t i);
+    static uint32_t getRainHourBucketSlot(uint8_t i);
+    static void setRainHourBucket(uint8_t i, float mm, uint32_t slot);
+
+    static float getRain24h();
+    static uint32_t getRain24hStartEpoch();
+    static void setRain24h(float mm, uint32_t startEpoch);
+
+    static float getRainWeek();
+    static uint32_t getRainWeekStartEpoch();
+    static void setRainWeek(float mm, uint32_t startEpoch);
+
+    static float getRainMonth();
+    static uint32_t getRainMonthStartEpoch();
+    static void setRainMonth(float mm, uint32_t startEpoch);
 
     // Struct internal harus public agar bisa dideklarasikan sebagai
     // RTC_DATA_ATTR static RTCMemory::RTCData di file .cpp (di luar kelas).
@@ -274,8 +337,25 @@ public:
         uint8_t     pendingLen;
 
         // decoder rain state (harus persist lintas deep-sleep)
-        uint8_t rainCounterPrev;
+        uint16_t rainCounterPrev;
         float   rainAccumulated;
+
+        // ---- akumulator rain bertingkat (1h rolling + 24h/week/month kalender) ----
+        // 1 jam terakhir: rolling window sungguhan, dipecah jadi 12 sub-bucket
+        // 5 menitan (bukan reset kalender di jam:00) supaya "1 jam terakhir"
+        // selalu representasi 60 menit paling baru, bukan sisa jam berjalan.
+        float    rainHourBucket[RAIN_HOUR_BUCKET_COUNT];
+        uint32_t rainHourBucketSlot[RAIN_HOUR_BUCKET_COUNT]; // epoch/RAIN_HOUR_BUCKET_SPAN_SEC saat bucket ini terakhir dipakai
+
+        // 24h/week/month: bucket KALENDER (reset saat masuk hari/minggu/bulan
+        // baru), mengikuti pola alat referensi bawaan. Disimpan juga ke NVS
+        // (lihat persistRainStateToNVS) supaya tidak hilang saat cold-boot.
+        float    rain24h;
+        uint32_t rain24hStartEpoch;
+        float    rainWeek;
+        uint32_t rainWeekStartEpoch;
+        float    rainMonth;
+        uint32_t rainMonthStartEpoch;
     };
 
 private:
@@ -292,6 +372,21 @@ public:
     String dateTimeStr();
     String isoStr();
     void adjust(const DateTime& dt);
+
+    // Sync waktu dari server NTP asli (bukan header HTTP) via internet
+    // biasa (UDP/123), TIDAK menyalakan WiFi sendiri -- dipanggil hanya
+    // saat WiFi memang sudah konek (numpang sesi upload yang sudah ada).
+    // Return false kalau gagal (mis. jaringan blokir UDP/123, timeout) --
+    // RTC dibiarkan apa adanya, TIDAK di-fallback ke compile time.
+    bool syncFromNTP(uint32_t timeoutMs = 5000);
+
+    // Flag "butuh re-sync waktu", disimpan di NVS (bukan RTC memory,
+    // supaya tetap ada walau brownout ikut menghapus RTC memory).
+    // Di-set oleh BootManager saat mendeteksi reset sebab brownout/
+    // power-on, dikonsumsi (dibaca + dihapus) oleh SystemManager saat
+    // WiFi tersedia untuk mencoba NTP sync.
+    static void markNeedResync();
+    static bool consumeNeedResyncFlag(); // true jika ada flag & langsung dihapus dari NVS
 private:
     RTC_DS3231 rtc;
     bool ok = false;
@@ -372,22 +467,45 @@ public:
     // Mencari paket valid di dalam aliran bit
     bool scanForPacket(uint8_t* bits, uint16_t bitCount, uint8_t* out, uint8_t* outLen);
 
-    // Mendekode paket menjadi WeatherData (termasuk rain delta dan akumulasi)
-    bool decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulated);
+    // Mendekode paket menjadi WeatherData (termasuk rain delta dan akumulasi).
+    // `epoch` = waktu RTC saat ini (dipakai untuk bucket rolling 1h &
+    // kalender 24h/week/month) -- diambil oleh caller SEBELUM memanggil
+    // fungsi ini.
+    bool decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulated, uint32_t epoch);
 
     // Hitung CRC-8 (polynomial 0x31)
     uint8_t crc8(uint8_t* data, uint8_t len);
 
     // Reset state rain counter (dipanggil saat boot)
-    void resetRainCounter(uint8_t initialCounter = RAIN_UNINIT);
+    void resetRainCounter(uint16_t initialCounter = RAIN_UNINIT);
 
     // Muat/simpan state rain counter dari/ke RTC memory (persist lintas deep-sleep)
     void loadRainStateFromRTC();
     void saveRainStateToRTC();
 
 private:
-    uint8_t rainCounterPrev = RAIN_UNINIT;
+    uint16_t rainCounterPrev = RAIN_UNINIT;
     float rainAccumulated = 0.0f;
+
+    // ---- akumulator bertingkat (1h rolling + 24h/week/month kalender) ----
+    float    hourBucket[RAIN_HOUR_BUCKET_COUNT] = {0};
+    uint32_t hourBucketSlot[RAIN_HOUR_BUCKET_COUNT] = {0};
+    float    rain24h = 0.0f;
+    uint32_t rain24hStart = 0;
+    float    rainWeek = 0.0f;
+    uint32_t rainWeekStart = 0;
+    float    rainMonth = 0.0f;
+    uint32_t rainMonthStart = 0;
+
+    // Tambahkan `deltaMm` ke semua tingkat akumulator (dipanggil setiap
+    // ada delta rain baru, sebelum dikembalikan sebagai rain_delta).
+    // `epoch` dipakai untuk menentukan sub-bucket 1h mana yang kena, dan
+    // untuk mendeteksi kapan bucket kalender 24h/week/month harus reset.
+    void addToTieredAccumulators(float deltaMm, uint32_t epoch);
+
+    // Jumlahkan 12 sub-bucket 1 jam terakhir, sambil membuang (nolkan)
+    // sub-bucket yang sudah lewat >60 menit dari `epoch` saat ini.
+    float sumRollingHour(uint32_t epoch);
 };
 
 // --------------------------- 5.8 PowerManager -------------------------
@@ -466,9 +584,9 @@ public:
 };
 
 // --------------------------- 5.13 SystemManager ----------------------
-// Catatan: ESP32 deep sleep = reset penuh (RAM hilang, hanya
+// Catatan arsitektur: ESP32 deep sleep = reset penuh (RAM hilang, hanya
 // RTC memory yang bertahan). Karena itu SystemManager TIDAK berjalan
-// sebagai loop() terus-menerus; SystemManager::run() dieksekusi sekali
+// sebagai loop() terus-menerus; SystemManager::run() dieksekusi SEKALI
 // per siklus bangun (dipanggil dari setup()), lalu MCU deep sleep lagi
 // via Scheduler::goToSleep(). Semua state lintas-siklus (jadwal radio,
 // buffer upload, akumulasi hujan) disimpan di RTCMemory.
@@ -487,7 +605,8 @@ private:
     static bool packetReceivedThisCycle;
     // Prediksi epoch transmisi berikutnya dari referensi paket valid
     // terakhir. Dipakai baik untuk menentukan listenMs (run()) maupun
-    // durasi sleep (computeNextSleepMs())
+    // durasi sleep (computeNextSleepMs()) -- satu sumber kebenaran,
+    // supaya keduanya selalu konsisten relatif terhadap prediksi yang sama.
     static uint32_t predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now);
 };
 
