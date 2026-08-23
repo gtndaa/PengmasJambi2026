@@ -6,6 +6,7 @@ DeviceStatus SystemManager::status;
 uint32_t SystemManager::lastLightReadMs = 0;
 uint32_t SystemManager::lastRadioWatchdogMs = 0;
 uint32_t SystemManager::lastWifiCycleMs = 0;
+uint32_t SystemManager::lastAcceptedPacketMs = 0;   // <-- BARU
 bool SystemManager::firstWifiCycleDone = false;
 
 // =====================================================================
