@@ -146,6 +146,20 @@ void SystemManager::pollRadio() {
         return; // tidak ketemu paket valid dalam pulsa ini -- lanjut dengar seperti biasa
     }
 
+    // ---- Dedup: buang repeat dari transmisi yang sama ----
+    // Sensor mengirim burst yang sama beberapa kali berturut-turut demi
+    // keandalan (jarak antar-repeat cuma hitungan detik, jauh lebih
+    // pendek dari jarak antar-transmisi asli ~48 detik). Kalau paket
+    // valid ini datang terlalu dekat dengan paket valid sebelumnya,
+    // anggap masih repeat yang sama dan jangan diproses lagi -- radio
+    // tetap lanjut mendengarkan seperti biasa, cuma packet ini yang di-skip.
+    uint32_t nowMs = millis();
+    if (lastAcceptedPacketMs != 0 && (uint32_t)(nowMs - lastAcceptedPacketMs) < DUPLICATE_PACKET_WINDOW_MS) {
+        LOG_INFO("Paket duplikat diabaikan (selisih %lu ms dari paket sebelumnya, ambang=%lu ms)",
+                  (unsigned long)(nowMs - lastAcceptedPacketMs), (unsigned long)DUPLICATE_PACKET_WINDOW_MS);
+        return;
+    }
+
     uint32_t epoch = s_rtcOk ? s_rtc.now().unixtime() : (millis() / 1000);
 
     // Pasangkan dengan pembacaan cahaya PALING BARU. Di mode kontinu lux
@@ -156,6 +170,7 @@ void SystemManager::pollRadio() {
     float rainAcc;
     if (s_decoder.decodePacket(packet, pktLen, lastWeather, rainAcc, epoch)) {
         lastWeather.timestamp = epoch;
+        lastAcceptedPacketMs = nowMs; // <-- BARU: tandai waktu paket valid ini untuk dedup paket berikutnya
 
         LOG_INFO("Paket diterima: T=%.1fC H=%d%% Wind=%.1fkm/h Rain=%.1fmm Lux=%.1f Batt=%s",
                   lastWeather.temperature, lastWeather.humidity,

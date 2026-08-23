@@ -41,7 +41,7 @@
 // config dari server, lalu dimatikan lagi. Di luar jendela ini radio
 // 433MHz, sensor cahaya, dan pencatatan SD tetap berjalan seperti
 // biasa (TIDAK ikut mati/duty-cycle).
-#define WIFI_CYCLE_INTERVAL_MS     (5UL * 60UL * 1000UL)   // nyalakan WiFi tiap 5 menit
+#define WIFI_CYCLE_INTERVAL_MS     (1UL * 60UL * 1000UL)   // nyalakan WiFi tiap 5 menit
 #define WIFI_CONNECT_TIMEOUT_MS    15000UL                  // batas tunggu koneksi per percobaan
 
 // ---- Pembacaan sensor cahaya kontinu ----
@@ -72,6 +72,7 @@
 #define NTP_GMT_OFFSET_SEC        (7 * 3600L)   // WIB = UTC+7
 #define NTP_DAYLIGHT_OFFSET_SEC   0              // Indonesia tidak pakai DST
 #define NTP_SYNC_TIMEOUT_MS       5000UL
+#define DUPLICATE_PACKET_WINDOW_MS 3000UL
 
 // =====================================================================
 //  3. SERVER & API CONFIG
@@ -370,6 +371,20 @@ private:
     String filename = SD_FILENAME;
     String queueFilename = SD_QUEUE_FILENAME;
 
+    // CC1101 & SD card berbagi bus SPI fisik yang sama (SCK/MISO/MOSI),
+    // cuma beda pin CS (lihat CC1101_CSN vs SD_CS di bagian pinout).
+    // Library CC1101 (ELECHOUSE) tidak selalu melepas CS-nya (HIGH)
+    // secara konsisten di semua state -- kalau CS itu tertinggal LOW,
+    // chip CC1101 ikut "nyangkut" di jalur MISO dan bikin SEMUA
+    // transaksi SD berikutnya gagal terus (biasanya cuma tulisan
+    // PERTAMA setelah boot yang sukses, karena saat itu CS baru saja
+    // dipaksa HIGH oleh begin()). Makanya sebelum tiap operasi SD,
+    // paksa dulu CC1101_CSN ke HIGH supaya SD selalu dapat bus
+    // eksklusif. Aman dipanggil kapan pun -- CC1101 tetap menerima
+    // paket radio lewat pin GDO2 yang terpisah dari bus SPI, jadi
+    // proses penerimaan paket tidak terganggu sama sekali.
+    static void releaseRadioBus();
+
     static String encodeRecord(const WeatherData& d);
     static bool decodeRecord(const String& line, WeatherData& out);
 };
@@ -517,8 +532,8 @@ public:
 //                      sinkron config, lalu dimatikan lagi
 class SystemManager {
 public:
-    static void init();     // inisialisasi satu kali: serial, I2C, radio, RTC, SD, light sensor, config
-    static void loop();     // dipanggil terus-menerus dari loop() Arduino
+    static void init();
+    static void loop();
 
 private:
     static WeatherData lastWeather;
@@ -527,13 +542,14 @@ private:
     static uint32_t lastLightReadMs;
     static uint32_t lastRadioWatchdogMs;
     static uint32_t lastWifiCycleMs;
-    static bool     firstWifiCycleDone;   // supaya siklus WiFi pertama langsung jalan saat boot, tidak nunggu 5 menit
+    static uint32_t lastAcceptedPacketMs;  // <-- BARU: waktu (millis) paket radio VALID terakhir yang diterima, dipakai untuk dedup
+    static bool     firstWifiCycleDone;
 
-    static void pollRadio();              // cek & proses paket radio (non-blocking)
-    static void pollLight();              // baca sensor cahaya berkala
-    static void pollRadioWatchdog();      // SetRx() berkala anti-nyangkut
-    static void runWifiCycleIfDue();      // cek timer & jalankan siklus WiFi kalau sudah waktunya
-    static void doWifiCycle();            // isi siklus WiFi: konek -> sinkron config -> upload -> flush SD -> disconnect
+    static void pollRadio();
+    static void pollLight();
+    static void pollRadioWatchdog();
+    static void runWifiCycleIfDue();
+    static void doWifiCycle();
 };
 
 // --------------------------- 5.14 BootManager ------------------------

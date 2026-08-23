@@ -1,6 +1,14 @@
 #include "headers.h"
 #include <SPI.h>
 
+// Lihat komentar di headers.h (SDManager::releaseRadioBus) untuk kenapa
+// ini perlu: CC1101 & SD berbagi bus SPI fisik yang sama, jadi CS
+// radio harus dipastikan HIGH (dilepas) sebelum SD memakai bus,
+// setiap kali -- bukan cuma sekali saat begin().
+void SDManager::releaseRadioBus() {
+    digitalWrite(CC1101_CSN, HIGH);
+}
+
 bool SDManager::begin() {
     pinMode(CC1101_CSN, OUTPUT);
     digitalWrite(CC1101_CSN, HIGH);
@@ -18,6 +26,7 @@ bool SDManager::isPresent() const { return present; }
 
 bool SDManager::appendRecord(const char* data) {
     if (!present) return false;
+    releaseRadioBus();                 // <-- BARU
     File f = SD.open(filename.c_str(), FILE_APPEND);
     if (!f) return false;
     size_t written = f.println(data);
@@ -28,11 +37,6 @@ bool SDManager::appendRecord(const char* data) {
 // =====================================================================
 // Antrian persisten (queue.csv) untuk data yang gagal terkirim ke server
 // =====================================================================
-// Format 1 baris = 1 data cuaca, urutan field sama persis dengan yang
-// dikirim CloudAPI::uploadWeather() supaya gampang dipetakan ulang:
-// timestamp,temperature,humidity,windSpeed,windGust,windDirection,
-// windDeg,rainDelta,rainTotal,rainRaw,light,channel,batteryOk
-
 String SDManager::encodeRecord(const WeatherData& d) {
     String s;
     s += String(d.timestamp);       s += ",";
@@ -57,7 +61,7 @@ bool SDManager::decodeRecord(const String& line, WeatherData& out) {
     for (int i = 0; i < 13; i++) {
         int comma = line.indexOf(',', start);
         if (i < 12) {
-            if (comma < 0) return false; // baris rusak/tidak lengkap
+            if (comma < 0) return false;
             parts[i] = line.substring(start, comma);
             start = comma + 1;
         } else {
@@ -84,6 +88,7 @@ bool SDManager::decodeRecord(const String& line, WeatherData& out) {
 
 bool SDManager::queuePush(const WeatherData& d) {
     if (!present) return false;
+    releaseRadioBus();                 // <-- BARU
     File f = SD.open(queueFilename.c_str(), FILE_APPEND);
     if (!f) return false;
     size_t written = f.println(encodeRecord(d));
@@ -93,6 +98,7 @@ bool SDManager::queuePush(const WeatherData& d) {
 
 uint16_t SDManager::queueCount() {
     if (!present) return 0;
+    releaseRadioBus();                 // <-- BARU
     File f = SD.open(queueFilename.c_str(), FILE_READ);
     if (!f) return 0;
     uint16_t n = 0;
@@ -111,11 +117,10 @@ void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemain
     outRemaining = 0;
     if (!present) return;
 
-    // Proses SATU record tertua per iterasi, dan ketika record itu sukses terkirim,
-    // langsung tulis ulang queue.csv tanpa record tsb saat itu juga (bukan di akhir). 
     for (uint16_t i = 0; (maxRecords == 0 || i < maxRecords); i++) {
+        releaseRadioBus();             // <-- BARU (sebelum baca queue.csv)
         File f = SD.open(queueFilename.c_str(), FILE_READ);
-        if (!f) break; // tidak ada antrian sama sekali
+        if (!f) break;
 
         String firstLine;
         bool haveFirst = false;
@@ -127,25 +132,20 @@ void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemain
             haveFirst = true;
             break;
         }
-        if (!haveFirst) { f.close(); break; } // antrian sudah kosong
+        if (!haveFirst) { f.close(); break; }
 
         WeatherData d;
         bool parsed = decodeRecord(firstLine, d);
         bool uploaded = parsed && api.uploadWeather(d);
 
         if (!uploaded) {
-            // Gagal (WiFi/server bermasalah, atau baris rusak) -> hentikan
-            // batch ini, jangan paksa lanjut ke baris berikutnya kalau
-            // sinyalnya memang lagi jelek. Baris ini tidak disentuh sama
-            // sekali di file, dicoba lagi siklus berikutnya.
             f.close();
             break;
         }
 
         outSent++;
 
-        // Sukses -> commit SEKARANG: tulis ulang queue.csv tanpa baris
-        // pertama ini (baris² sisanya disalin apa adanya).
+        releaseRadioBus();             // <-- BARU (sebelum tulis ulang queue.csv)
         const char* tmpName = "/queue.tmp";
         SD.remove(tmpName);
         File tmp = SD.open(tmpName, FILE_WRITE);
@@ -157,14 +157,16 @@ void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemain
             }
             tmp.close();
             f.close();
+            releaseRadioBus();         // <-- BARU (sebelum remove/rename)
             SD.remove(queueFilename.c_str());
             SD.rename(tmpName, queueFilename.c_str());
         } else {
             f.close();
         }
 
-        yield(); // beri jatah CPU ke task WiFi/lwIP tiap record
+        yield();
     }
 
+    releaseRadioBus();                 // <-- BARU (sebelum queueCount() di akhir)
     outRemaining = queueCount();
 }
