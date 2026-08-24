@@ -1,6 +1,14 @@
 #include "headers.h"
 
 void BootManager::init() {
+    // PENTING: lepas gpio_hold sebelum apapun lain -- lihat penjelasan
+    // panjang di PowerManager::prepareDeepSleep(). Kalau tidak dilepas,
+    // pin CC1101_CSN tetap "terkunci" ke level terakhir sebelum tidur
+    // dan TIDAK BISA didorong ulang oleh pinMode()/digitalWrite() atau
+    // dipakai SPI sampai hold ini dilepas -- CC1101Driver::begin() di
+    // siklus ini pasti gagal total kalau langkah ini terlewat.
+    gpio_hold_dis((gpio_num_t)CC1101_CSN);
+
     RTCMemory::init();
     RTCMemory::incrementBootCount();
     LOG_INFO("Boot #%d", RTCMemory::getBootCount());

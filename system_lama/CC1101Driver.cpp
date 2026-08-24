@@ -23,7 +23,45 @@ static void IRAM_ATTR gdo2ISR() {
     }
 }
 
+// CC1101 setelah goSleep() (mode SPWD/power-down) TIDAK BISA langsung
+// menerima command SPI apapun lagi -- termasuk SRES (reset) yang
+// dipanggil di dalam Init(). Datasheet CC1101 mensyaratkan urutan
+// "bangun" manual dulu: tarik CS LOW, lalu tunggu pin MISO turun ke LOW
+// (tanda kristal osilator sudah stabil & chip benar-benar aktif lagi) --
+// BARU SETELAH ITU command SPI lain boleh dikirim. Kalau ini dilewati,
+// SRES di dalam Init() bisa diabaikan/gagal karena chip masih separuh
+// tidur, membuat re-init di siklus berikutnya (setelah chip pernah
+// di-goSleep()-kan di siklus sebelumnya) tidak benar-benar berhasil --
+// walau getCC1101() masih terlihat "lolos" (mis. kalau itu cuma baca
+// register versi yang kebetulan masih terbaca meski chip belum full
+// bangun). Ini realisasinya kemungkinan besar akar masalah "sukses
+// sekali di awal (chip belum pernah tidur), lalu gagal terus-menerus
+// di semua siklus berikutnya (chip selalu baru saja di-goSleep()-kan
+// di akhir siklus sebelumnya)".
+//
+// Dipanggil di AWAL begin(), SEBELUM Init(). Aman dipanggil terlepas
+// dari apakah chip benar-benar sedang tidur atau tidak (pada cold boot
+// pertama, MISO harusnya sudah rendah/tidak relevan, jadi loop tunggu
+// akan langsung lolos tanpa efek samping).
+static void wakeCC1101FromSleep() {
+    pinMode(CC1101_CSN, OUTPUT);
+    pinMode(CC1101_MISO, INPUT);
+
+    digitalWrite(CC1101_CSN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(CC1101_CSN, LOW);
+
+    uint32_t start = millis();
+    while (digitalRead(CC1101_MISO) == HIGH) {
+        if (millis() - start > 100) break; // timeout jaga-jaga, jangan hang selamanya
+    }
+
+    digitalWrite(CC1101_CSN, HIGH);
+    delayMicroseconds(10);
+}
+
 bool CC1101Driver::begin() {
+    wakeCC1101FromSleep();
     ELECHOUSE_cc1101.setSpiPin(CC1101_SCK, CC1101_MISO, CC1101_MOSI, CC1101_CSN);
     ELECHOUSE_cc1101.setGDO(GDO0_PIN, GDO2_PIN);
     ELECHOUSE_cc1101.Init();

@@ -4,7 +4,25 @@ WeatherData SystemManager::lastWeather;
 DeviceStatus SystemManager::status;
 bool SystemManager::packetReceivedThisCycle = false;
 
+// State internal untuk siklus berjalan (tidak perlu di RTC memory karena
+// hanya dipakai dalam satu eksekusi run() -> computeNextSleepMs()).
 static bool s_rtcOk = false;
+
+// =====================================================================
+// CATATAN ARSITEKTUR DUTY-CYCLE
+// =====================================================================
+//
+//   1. init()  -> inisialisasi minimal, baca state dari RTC memory
+//   2. run()   -> SATU siklus kerja: dengar radio, baca lux, (mungkin)
+//                 upload ke cloud, lalu hitung durasi sleep berikutnya
+//   3. Scheduler::goToSleep() -> deep sleep sampai jadwal paket berikutnya
+//
+// Saat belum tahu jadwal sensor (first boot / re-sync setelah banyak
+// paket hilang), ESP32 mendengar penuh LISTEN_WINDOW_MS (30s) untuk
+// menangkap 1 paket dan mengunci sinkronisasi ke RTC (via
+// RTCMemory::setLastPacketEpoch). Setelah sinkron, ESP32 cukup bangun
+// sesaat sebelum jadwal prediksi (guard window TX_JITTER_GUARD_MS*2)
+// =====================================================================
 
 void SystemManager::init() {
     BootManager::init();

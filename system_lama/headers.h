@@ -14,6 +14,7 @@
 #include <Preferences.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <driver/gpio.h>
 #include <time.h>
 #include "secrets.h"
 
