@@ -14,6 +14,7 @@
 #include <Preferences.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <driver/gpio.h>
 #include <time.h>
 #include "secrets.h"
 
@@ -33,28 +34,10 @@
 
 #define TIMEZONE_OFFSET     0
 
-// ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) -------
-// Dari analisis log rtl_433-style: sensor cuaca (id 0x22 ch4) mengirim
-// paket kira-kira setiap 48 detik, kadang meleset (miss 1-3 siklus).
-// Strategi: setelah paket pertama berhasil didekode & timestamp RTC
-// diketahui, ESP32 memprediksi waktu paket berikutnya dan hanya
-// bangun sesaat sebelum itu (guard window), lalu deep sleep lagi.
+// ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) ----
 #define TX_PERIOD_MS             48000UL   // interval nominal transmisi sensor
 #define TX_JITTER_GUARD_MS        5000UL   // toleransi jitter DI SISI SETELAH prediksi
-                                            // (dulu 4000; dinaikkan sedikit sbg
-                                            // pengaman ekstra jitter oscillator TX asli)
 #define WAKE_BEFORE_MS            4000UL   // bangun lebih awal dari prediksi.
-                                            // Dulu 1500ms -- ternyata jauh kurang:
-                                            // rtc.now() hanya presisi 1 detik penuh
-                                            // (kuantisasi s/d 999ms), plus overhead
-                                            // boot+init (delay(200) eksplisit + I2C/SPI
-                                            // RTC/CC1101/BH1750) yang selama ini tidak
-                                            // pernah dikurangkan dari margin ini. Net
-                                            // effect: window dengar mulai jauh lebih
-                                            // telat dari prediksi daripada yang
-                                            // diasumsikan, sehingga TX yang datang pas
-                                            // atau lebih awal dari jadwal keburu lewat
-                                            // sebelum radio mulai listen.
 #define MAX_MISSED_CYCLES         3       // setelah sekian kali miss beruntun -> re-sync (dengar penuh 1 periode)
 
 // ---- NTP time sync (dipakai untuk koreksi drift RTC & recovery pasca-brownout) ----
@@ -69,12 +52,32 @@
 #define NTP_SYNC_TIMEOUT_MS       5000UL
 #define MIN_SLEEP_MS              2000UL  // batas bawah supaya tidak sleep negatif/terlalu singkat
 #define PENDING_BUFFER_SIZE        8      // jumlah pembacaan yang ditampung di RTC memory sebelum upload
-#define UPLOAD_EVERY_N_CYCLES ((UPLOAD_INTERVAL_MS + TX_PERIOD_MS - 1) / TX_PERIOD_MS) // ~ setiap berapa siklus 48s baru upload
+
+
+// SUPERCAP POWER STATE CONFIG
+#define SUPERCAP_CAL_SLOPE        1.02f
+#define SUPERCAP_CAL_OFFSET       0.70f
+
+#define SUPERCAP_FULL_V           10.2f  // penuh riil ~10.5-10.6V, margin ke bawah
+#define SUPERCAP_DROP_HYSTERESIS  0.35f  // turun sekian volt dari puncak baru dianggap mulai dipakai
+#define SUPERCAP_RECOVER_MARGIN   0.4f   // naik sekian volt dari titik terendah baru dianggap PLN kembali
+#define SUPERCAP_RISE_CONFIRM_N   2      // butuh sekian bacaan berturut-turut yang penuhi margin di atas
+#define SUPERCAP_LOW_V            7.0f   // mulai peringatan, masih ada margin ke minimum buck (~5.5V)
+#define SUPERCAP_CRITICAL_V       6.0f   // darurat, sudah dekat minimum input buck
+
+// Status daya supercap
+enum SuperCapState : uint8_t {
+    CAP_STATE_UNKNOWN = 0,     // belum ada data (baru boot)
+    CAP_STATE_CHARGING,        // menuju penuh, belum pernah full sejak reset
+    CAP_STATE_STANDBY_PLN,     // sudah pernah penuh, PLN ada, supercap idle
+    CAP_STATE_ON_CAP,          // turun dari puncak, PLN putus, masih sehat
+    CAP_STATE_LOW,             // sudah masuk ambang rendah
+    CAP_STATE_CRITICAL         // mendekati minimum buck, hampir mati
+};
 
 // =====================================================================
 //  3. SERVER & API CONFIG
 // =====================================================================
-// URL ini sama dengan BASE_URL yang sudah diuji berhasil di esp_lambda_test.
 #define SERVER_URL          "https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws"
 #define API_KEY             "your-api-key"
 
@@ -107,7 +110,7 @@
 
 // ADC supercapacitor / baterai
 #define SUPERCAP_PIN        34
-#define BATTERY_PIN         34   // tidak ada pembagi tegangan terpisah di board ini; gunakan pin yang sama
+#define BATTERY_PIN         34   // none
 
 // =====================================================================
 //  7. OTHER CONFIGS
@@ -133,13 +136,6 @@
 #define TEMP_DIVISOR        10.0f
 #define WIND_DEG_STEP       22.5f
 
-// PENTING: rain counter di paket radio ternyata 16-bit (byte tinggi di
-// packet[6], byte rendah di packet[7]), BUKAN 8-bit di packet[6] saja
-// seperti asumsi sebelumnya. Terverifikasi dari perbandingan delta
-// counter vs pembacaan alat referensi bawaan -- rasio delta_counter /
-// delta_mm_referensi persis 3.333 (=1/0.3) di 9 dari 9 titik data
-// sample real, HANYA cocok kalau counter dibaca sebagai 16-bit
-// gabungan packet[6]:packet[7], bukan packet[6] sendirian.
 #define RAIN_UNINIT         0xFFFF
 
 // Akumulator rain bertingkat (lihat RTCMemory::RTCData & WeatherDecoder)
@@ -191,6 +187,8 @@ struct WeatherData {
 struct DeviceStatus {
     float  batteryVoltage;       // Volt
     float  superCapVoltage;      // Volt
+    SuperCapState capState = CAP_STATE_UNKNOWN;  // status daya supercap siklus ini (lihat SuperCapState)
+    float  capPeakVoltage;       // puncak tegangan supercap yg tercatat (utk observasi/log)
     int8_t wifiRSSI;             // dBm
     uint32_t freeHeap;
     uint32_t uptime;             // detik
@@ -319,6 +317,18 @@ public:
     static uint32_t getRainMonthStartEpoch();
     static void setRainMonth(float mm, uint32_t startEpoch);
 
+    // ---- state tren daya supercap (persist lintas deep-sleep) ----
+    static float getCapPeakVoltage();
+    static void setCapPeakVoltage(float v);
+    static float getCapTroughVoltage();
+    static void setCapTroughVoltage(float v);
+    static float getCapLastVoltage();
+    static void setCapLastVoltage(float v);
+    static SuperCapState getCapState();
+    static void setCapState(SuperCapState s);
+    static uint8_t getCapRiseConfirmCount();
+    static void setCapRiseConfirmCount(uint8_t c);
+
     // Struct internal harus public agar bisa dideklarasikan sebagai
     // RTC_DATA_ATTR static RTCMemory::RTCData di file .cpp (di luar kelas).
     struct RTCData {
@@ -356,6 +366,13 @@ public:
         uint32_t rainWeekStartEpoch;
         float    rainMonth;
         uint32_t rainMonthStartEpoch;
+
+        // ---- tren daya supercap (lihat SuperCapState & PowerManager) ----
+        float        capPeakVoltage;      // puncak tegangan tercatat, dipakai selama charging/standby
+        float        capTroughVoltage;    // titik terendah tercatat, dipakai selama ON_CAP/LOW/CRITICAL
+        float        capLastVoltage;      // bacaan siklus sebelumnya
+        SuperCapState capState;
+        uint8_t      capRiseConfirmCount; // hitungan bacaan berturut-turut yang sudah naik cukup dari trough
     };
 
 private:
@@ -373,17 +390,8 @@ public:
     String isoStr();
     void adjust(const DateTime& dt);
 
-    // Sync waktu dari server NTP asli (bukan header HTTP) via internet
-    // biasa (UDP/123), TIDAK menyalakan WiFi sendiri -- dipanggil hanya
-    // saat WiFi memang sudah konek (numpang sesi upload yang sudah ada).
-    // Return false kalau gagal (mis. jaringan blokir UDP/123, timeout) --
-    // RTC dibiarkan apa adanya, TIDAK di-fallback ke compile time.
     bool syncFromNTP(uint32_t timeoutMs = 5000);
 
-    // Flag "butuh re-sync waktu", disimpan di NVS (bukan RTC memory,
-    // supaya tetap ada walau brownout ikut menghapus RTC memory).
-    // Di-set oleh BootManager saat mendeteksi reset sebab brownout/
-    // power-on, dikonsumsi (dibaca + dihapus) oleh SystemManager saat
     // WiFi tersedia untuk mencoba NTP sync.
     static void markNeedResync();
     static bool consumeNeedResyncFlag(); // true jika ada flag & langsung dihapus dari NVS
@@ -407,17 +415,8 @@ public:
     bool queuePush(const WeatherData& d);     // simpan 1 data yang gagal terkirim
     uint16_t queueCount();                    // jumlah data yang masih tertunda di SD
 
-    // Coba kirim ulang semua data di antrian lewat `api`. Data yang
-    // berhasil terkirim (server balas sukses / masuk database) langsung
-    // dihapus dari file SD; yang masih gagal tetap disimpan untuk
-    // dicoba lagi di siklus upload berikutnya.
-    // outSent  = jumlah yang berhasil terkirim & dihapus dari SD
-    // outRemaining = jumlah yang masih tersisa di SD setelah percobaan ini
-    // maxRecords=0 berarti tanpa batas. Sengaja diberi default terbatas
-    // di pemanggil (lihat SystemManager::upload()) supaya satu siklus
-    // upload tidak memblokir radio terlalu lama kalau backlog besar.
     void queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining,
-                     uint16_t maxRecords = 0);
+                     uint16_t maxRecords = 0, const char* capBattField = "OK");
 
 private:
     bool present = false;
@@ -467,10 +466,7 @@ public:
     // Mencari paket valid di dalam aliran bit
     bool scanForPacket(uint8_t* bits, uint16_t bitCount, uint8_t* out, uint8_t* outLen);
 
-    // Mendekode paket menjadi WeatherData (termasuk rain delta dan akumulasi).
-    // `epoch` = waktu RTC saat ini (dipakai untuk bucket rolling 1h &
-    // kalender 24h/week/month) -- diambil oleh caller SEBELUM memanggil
-    // fungsi ini.
+    // Mendekode paket menjadi WeatherData
     bool decodePacket(uint8_t* packet, uint8_t len, WeatherData& data, float& rainAccumulated, uint32_t epoch);
 
     // Hitung CRC-8 (polynomial 0x31)
@@ -514,6 +510,18 @@ public:
     void begin();
     float readBatteryVoltage() const;      // volt
     float readSuperCapVoltage() const;     // volt
+
+    // Simpulkan status daya supercap dari tegangan sekarang + tren RTCMemory.
+    SuperCapState updateSuperCapState(float currentV) const;
+
+    // Representasi string untuk logging.
+    static const char* superCapStateToStr(SuperCapState s);
+
+    // Dipetakan ke field "batt" existing di payload HTTP
+    // "OK" normal, "ON_CAP" jalan di supercap tapi sehat,
+    // "LOW"/"CRIT" supercap mau habis, PLN belum kembali.
+    static const char* superCapStateToBattField(SuperCapState s);
+
     void prepareDeepSleep(uint64_t wakeUpTimeUs);
     void deepSleepNow();
 };
@@ -525,7 +533,7 @@ public:
 
     bool begin(const char* serverURL, const char* apiKey);
 
-    bool uploadWeather(const WeatherData& data);
+    bool uploadWeather(const WeatherData& data, const char* capBattField = "OK");
     bool uploadStatus(const DeviceStatus& status);
 
     // Ambil konfigurasi terbaru dari endpoint GET /config (backend
@@ -605,8 +613,7 @@ private:
     static bool packetReceivedThisCycle;
     // Prediksi epoch transmisi berikutnya dari referensi paket valid
     // terakhir. Dipakai baik untuk menentukan listenMs (run()) maupun
-    // durasi sleep (computeNextSleepMs()) -- satu sumber kebenaran,
-    // supaya keduanya selalu konsisten relatif terhadap prediksi yang sama.
+    // durasi sleep (computeNextSleepMs()) 
     static uint32_t predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now);
 };
 

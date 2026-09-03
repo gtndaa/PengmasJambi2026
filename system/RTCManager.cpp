@@ -10,19 +10,6 @@ bool RTCManager::begin() {
     }
     ok = true;
     if (rtc.lostPower()) {
-        // PENTING: ini yang paling mungkin jadi sumber "RTC selalu
-        // ketinggalan waktu" walau sudah pernah di-adjust manual --
-        // setiap kali lostPower() balik true (paling umum karena baterai
-        // cadangan CR2032 di modul DS3231 lemah/habis/lepas kontak, atau
-        // sempat ada dip tegangan sekilas di VCC saat wake dari deep
-        // sleep), baris di bawah ini MENIMPA waktu RTC dengan waktu
-        // KOMPILASI firmware (__DATE__/__TIME__) -- bukan waktu sekarang.
-        // Kalau ini terpicu berulang di banyak wake cycle (bukan cuma
-        // sekali), adjust manual manapun yang pernah dilakukan akan
-        // ketimpa lagi begitu lostPower() true lagi. Log ini WAJIB
-        // dipantau: kalau baris WARN ini muncul di tiap/hampir tiap
-        // wake, itu indikasi kuat baterai backup DS3231 bermasalah,
-        // bukan soal firmware semata.
         LOG_WARN("RTC lostPower()=true -> waktu di-reset ke waktu KOMPILASI "
                   "(%s %s), BUKAN waktu sekarang. Cek baterai backup CR2032 "
                   "di modul DS3231 kalau ini sering muncul.",

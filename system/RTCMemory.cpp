@@ -9,8 +9,7 @@ RTCMemory::RTCData* RTCMemory::rtcData = &rtcStore;
 void RTCMemory::init() {
     // Data sudah ada di RTC (bertahan lintas deep-sleep), tidak perlu
     // inisialisasi ulang selama itu bukan power-on pertama kali.
-    // Deteksi first-boot: wakeup cause == UNDEFINED artinya power-on/reset,
-    // bukan bangun dari deep sleep timer -> reset semua state jadwal.
+    // Deteksi first-boot: wakeup cause == UNDEFINED artinya power-on/reset.
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
         rtcData->bootCount = 0;
@@ -21,20 +20,6 @@ void RTCMemory::init() {
         rtcData->missedCycles = 0;
         rtcData->pendingLen = 0;
 
-        // PENTING: rainCounterPrev & rainAccumulated SENGAJA TIDAK
-        // direset ke UNINIT/0 di sini seperti field lain di atas.
-        // Field-field lain itu memang state SESI/jadwal yang wajar
-        // reset tiap cold-boot -- tapi akumulasi hujan itu pengukuran
-        // JANGKA PANJANG yang seharusnya tidak boleh hilang cuma
-        // karena device sempat brownout/restart sesaat (device ini
-        // sudah beberapa kali mengalami POWERON_RESET & RTC
-        // lostPower() akibat tegangan kurang stabil). RTC memory
-        // sendiri tidak bisa bertahan lintas cold-boot (itu sifat
-        // dasarnya), jadi rain state dipulihkan dari NVS/flash
-        // (Preferences) yang memang didesain untuk bertahan lintas
-        // power loss. Kalau tidak ada data NVS sama sekali (device
-        // benar-benar baru pertama kali nyala), baru fallback ke
-        // UNINIT/0.
         Preferences p;
         if (p.begin("rainst", true)) { // read-only
             bool has = p.isKey("counter");
@@ -79,6 +64,15 @@ void RTCMemory::init() {
             rtcData->rainHourBucket[i] = 0.0f;
             rtcData->rainHourBucketSlot[i] = 0;
         }
+
+        // Tren daya supercap direset tiap cold-boot (bukan bangun dari
+        // deep sleep). Cold-boot berarti device baru nyala/brownout,
+        // jadi state lama sudah tidak relevan, mulai dari UNKNOWN lagi.
+        rtcData->capPeakVoltage = 0.0f;
+        rtcData->capTroughVoltage = 0.0f;
+        rtcData->capLastVoltage = 0.0f;
+        rtcData->capState = CAP_STATE_UNKNOWN;
+        rtcData->capRiseConfirmCount = 0;
     }
 }
 
@@ -210,11 +204,6 @@ void RTCMemory::setRainAccumulated(float v) {
 
 void RTCMemory::persistRainStateToNVS() {
     // Write-through ke NVS supaya rain state selamat lintas cold-boot
-    // (lihat penjelasan panjang di init()). Sengaja TIDAK dipanggil di
-    // setiap wake -- cukup dipanggil dari WeatherDecoder setelah paket
-    // valid diproses (jadi hanya nulis flash ketika memang ada data
-    // baru), supaya tidak menghabiskan write-cycle NVS/flash secara
-    // sia-sia di siklus yang tidak menangkap paket sama sekali.
     Preferences p;
     if (!p.begin("rainst", false)) return; // read-write
     p.putUShort("counter", rtcData->rainCounterPrev);
@@ -266,3 +255,15 @@ void RTCMemory::setRainMonth(float mm, uint32_t startEpoch) {
     rtcData->rainMonth = mm;
     rtcData->rainMonthStartEpoch = startEpoch;
 }
+
+// ---- state tren daya supercap ----
+float RTCMemory::getCapPeakVoltage() { return rtcData->capPeakVoltage; }
+void RTCMemory::setCapPeakVoltage(float v) { rtcData->capPeakVoltage = v; }
+float RTCMemory::getCapTroughVoltage() { return rtcData->capTroughVoltage; }
+void RTCMemory::setCapTroughVoltage(float v) { rtcData->capTroughVoltage = v; }
+float RTCMemory::getCapLastVoltage() { return rtcData->capLastVoltage; }
+void RTCMemory::setCapLastVoltage(float v) { rtcData->capLastVoltage = v; }
+SuperCapState RTCMemory::getCapState() { return rtcData->capState; }
+void RTCMemory::setCapState(SuperCapState s) { rtcData->capState = s; }
+uint8_t RTCMemory::getCapRiseConfirmCount() { return rtcData->capRiseConfirmCount; }
+void RTCMemory::setCapRiseConfirmCount(uint8_t c) { rtcData->capRiseConfirmCount = c; }

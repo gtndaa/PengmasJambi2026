@@ -10,7 +10,7 @@ bool CloudAPI::begin(const char* serverURL, const char* apiKey) {
     return true;
 }
 
-bool CloudAPI::uploadWeather(const WeatherData& data) {
+bool CloudAPI::uploadWeather(const WeatherData& data, const char* capBattField) {
     if (server.isEmpty()) {
         LOG_ERROR("No server URL, cannot upload");
         return false;
@@ -26,7 +26,10 @@ bool CloudAPI::uploadWeather(const WeatherData& data) {
     doc["datetime"]   = Helpers::epochToDateTimeStr(data.timestamp);
     doc["id"]         = DEVICE_ID;
     doc["ch"]         = data.channel;
-    doc["batt"]       = data.batteryOk ? "OK" : "LOW";
+    // batt diisi status supercap/PLN (bukan lagi data.batteryOk yang
+    // praktis selalu "OK"): "OK" normal, "ON_CAP" jalan di supercap
+    // sehat, "LOW"/"CRIT" supercap mau habis.
+    doc["batt"]       = capBattField;
     doc["temp_out"]   = data.temperature;
     doc["hum_out"]    = data.humidity;
     doc["wind_speed"] = data.windSpeed;
@@ -88,8 +91,6 @@ bool CloudAPI::fetchRemoteConfig(RemoteConfig& out) {
         return false;
     }
 
-    // configVersion wajib ada supaya bisa dibandingkan; kalau tidak ada
-    // sama sekali di response, anggap gagal (jangan tebak-tebak).
     if (!doc.containsKey("configVersion")) {
         LOG_WARN("Response /config tidak punya field configVersion, diabaikan");
         return false;

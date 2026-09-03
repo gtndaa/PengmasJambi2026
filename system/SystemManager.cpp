@@ -4,16 +4,12 @@ WeatherData SystemManager::lastWeather;
 DeviceStatus SystemManager::status;
 bool SystemManager::packetReceivedThisCycle = false;
 
-// State internal untuk siklus berjalan (tidak perlu di RTC memory karena
-// hanya dipakai dalam satu eksekusi run() -> computeNextSleepMs()).
 static bool s_rtcOk = false;
 
 // =====================================================================
-// CATATAN ARSITEKTUR DUTY-CYCLE
-// =====================================================================
-//
+// ARSITEKTUR DUTY-CYCLE
 //   1. init()  -> inisialisasi minimal, baca state dari RTC memory
-//   2. run()   -> SATU siklus kerja: dengar radio, baca lux, (mungkin)
+//   2. run()   -> satu siklus kerja: dengar radio, baca lux, (mungkin)
 //                 upload ke cloud, lalu hitung durasi sleep berikutnya
 //   3. Scheduler::goToSleep() -> deep sleep sampai jadwal paket berikutnya
 //
@@ -25,10 +21,14 @@ static bool s_rtcOk = false;
 // =====================================================================
 
 void SystemManager::init() {
-    BootManager::init();
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH);
+
     Logger::setOutput(&Serial);
     Serial.begin(115200);
     delay(200);
+
+    BootManager::init();
 
     RTCMemory::incrementWakeCounter();
     LOG_INFO("=== Wake #%lu (boot #%lu) ===",
@@ -98,10 +98,48 @@ void SystemManager::run() {
 
     readLight(light);
 
+    {
+        PowerManager pmCap;
+        pmCap.begin();
+        status.superCapVoltage = pmCap.readSuperCapVoltage();
+        status.batteryVoltage  = pmCap.readBatteryVoltage();
+        SuperCapState prevState = RTCMemory::getCapState();
+        status.capState = pmCap.updateSuperCapState(status.superCapVoltage);
+        status.capPeakVoltage = RTCMemory::getCapPeakVoltage();
+
+        if (status.capState != prevState) {
+            LOG_INFO("Status daya supercap berubah: %s -> %s (V=%.2f, peak=%.2f)",
+                      PowerManager::superCapStateToStr(prevState),
+                      PowerManager::superCapStateToStr(status.capState),
+                      status.superCapVoltage, status.capPeakVoltage);
+        }
+        if (status.capState == CAP_STATE_LOW) {
+            LOG_WARN("Supercap mulai rendah (%.2fV) & PLN belum kembali", status.superCapVoltage);
+        } else if (status.capState == CAP_STATE_CRITICAL) {
+            LOG_ERROR("Supercap KRITIS (%.2fV), mendekati batas minimum buck & PLN belum kembali!", status.superCapVoltage);
+        }
+    }
+
     if (packetReceivedThisCycle) {
         if (!RTCMemory::pushPending(lastWeather)) {
             LOG_WARN("Buffer pending penuh, data ini akan hilang jika belum diupload");
         }
+
+        struct tm tmInfo;
+        time_t epochT = (time_t)lastWeather.timestamp;
+        gmtime_r(&epochT, &tmInfo);
+        char dtStr[20];
+        strftime(dtStr, sizeof(dtStr), "%Y-%m-%d %H:%M:%S", &tmInfo);
+
+        LOG_INFO("Paket %s T=%.1fC H=%d%% Wind=%.1f/%.1fkm/h Dir=%d/%.0f Rain=%.2f/%.2fmm(raw=%u) Lux=%.1f Ch=%d SBatt=%s | Cap=%s V=%.2f Vpk=%.2f",
+                  dtStr, lastWeather.temperature, lastWeather.humidity,
+                  lastWeather.windSpeed, lastWeather.windGust,
+                  lastWeather.windDirection, lastWeather.windDeg,
+                  lastWeather.rainDelta, lastWeather.rainTotal, lastWeather.rainRaw,
+                  lastWeather.light, lastWeather.channel,
+                  lastWeather.batteryOk ? "OK" : "LOW",
+                  PowerManager::superCapStateToStr(status.capState),
+                  status.superCapVoltage, status.capPeakVoltage);
     }
 
     // Simpan salinan lokal ke SD sebagai backup (opsional, tidak
@@ -113,7 +151,9 @@ void SystemManager::run() {
     // buffer RTC memory sudah penuh, supaya WiFi tidak dinyalakan tiap 48s.
     uint32_t wake = RTCMemory::getWakeCounter();
     bool bufferFull = (RTCMemory::pendingCount() >= PENDING_BUFFER_SIZE);
-    bool scheduledUpload = (wake % UPLOAD_EVERY_N_CYCLES == 0);
+    uint32_t uploadEveryNCycles = (cfg.uploadInterval + TX_PERIOD_MS - 1) / TX_PERIOD_MS;
+    if (uploadEveryNCycles == 0) uploadEveryNCycles = 1;
+    bool scheduledUpload = (wake % uploadEveryNCycles == 0);
     if (scheduledUpload || bufferFull) {
         upload();
     }
@@ -124,10 +164,6 @@ void SystemManager::run() {
     status.wakeCounter = wake;
     strncpy(status.firmwareVersion, FW_VERSION, sizeof(status.firmwareVersion) - 1);
     status.firmwareVersion[sizeof(status.firmwareVersion) - 1] = '\0';
-
-    PowerManager pm;
-    status.batteryVoltage = pm.readBatteryVoltage();
-    status.superCapVoltage = pm.readSuperCapVoltage();
 }
 
 void SystemManager::receiveWeather(uint32_t listenWindowMs) {
@@ -140,28 +176,9 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
 
     radio.setReceiveMode();
     radio.resetPulseBuffer();
+
     uint32_t start = millis();
     bool got = false;
-
-    // predictedBefore dihitung dari lastPacketEpoch yg belum diupdate
-    // siklus ini, jadi ini representasi prediksi yang dipakai untuk
-    // memutuskan listenWindowMs di run().
-    uint32_t predictedBefore = 0;
-    bool havePrediction = false;
-    {
-        RTCManager rtcDiag;
-        if (rtcDiag.begin() && rtcDiag.isOK()) {
-            uint32_t nowEpoch = rtcDiag.now().unixtime();
-            uint32_t lastPktBefore = RTCMemory::getLastPacketEpoch();
-            if (lastPktBefore != 0) {
-                predictedBefore = predictNextExpectedEpoch(lastPktBefore, nowEpoch);
-                havePrediction = true;
-                LOG_INFO("Mulai dengar: now=%lu prediksi=%lu (margin %ld s), window=%lu ms",
-                          (unsigned long)nowEpoch, (unsigned long)predictedBefore,
-                          (long)predictedBefore - (long)nowEpoch, (unsigned long)listenWindowMs);
-            }
-        }
-    }
 
     while (millis() - start < listenWindowMs) {
         if (radio.isPacketAvailable()) {
@@ -187,20 +204,10 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
                     if (decoder.decodePacket(packet, pktLen, lastWeather, rainAcc, epoch)) {
                         lastWeather.timestamp = epoch;
 
-                        if (havePrediction) {
-                            LOG_INFO("Paket ditangkap: epoch=%lu, meleset %ld s dari prediksi",
-                                      (unsigned long)epoch, (long)epoch - (long)predictedBefore);
-                        }
-
                         decoder.saveRainStateToRTC();
 
                         RTCMemory::setLastPacketEpoch(epoch);
                         RTCMemory::resetMissedCycles();
-
-                        LOG_INFO("Paket diterima: T=%.1fC H=%d%% Wind=%.1fkm/h Rain=%.1fmm Batt=%s",
-                                  lastWeather.temperature, lastWeather.humidity,
-                                  lastWeather.windSpeed, lastWeather.rainTotal,
-                                  lastWeather.batteryOk ? "OK" : "LOW");
 
                         got = true;
                         decoded = true;
@@ -300,6 +307,17 @@ void SystemManager::upload() {
     CloudAPI api;
     api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str());
 
+    if (RTCManager::consumeNeedResyncFlag()) {
+        RTCManager rtcSync;
+        if (rtcSync.begin() && rtcSync.isOK()) {
+            if (!rtcSync.syncFromNTP(NTP_SYNC_TIMEOUT_MS)) {
+                RTCManager::markNeedResync(); // gagal -> tandai lagi utk dicoba siklus depan
+            }
+        } else {
+            RTCManager::markNeedResync();
+        }
+    }
+
     // ------------------------------------------------------------------
     // Sinkronisasi config dari server (GET /config), berbasis configVersion:
     //
@@ -372,38 +390,34 @@ void SystemManager::upload() {
         // remote.configVersion == cfg.configVersion -> tidak ada perubahan, lewati diam-diam.
     }
 
-    // 1) Kirim data yang baru terkumpul di siklus ini (RTC memory).
+    // Status daya supercap/PLN siklus ini, masuk ke field "batt"
+    const char* capBattField = PowerManager::superCapStateToBattField(status.capState);
+
+    // Backlog SD (data lama) dikirim duluan, baru data segar RTC siklus
+    // ini, supaya urutan waktu di server tetap benar.
+    uint16_t sdSent = 0, sdRemaining = 0;
+    if (sdReady) {
+        static const uint16_t MAX_QUEUE_FLUSH_PER_CYCLE = 20;
+        sd.queueFlush(api, sdSent, sdRemaining, MAX_QUEUE_FLUSH_PER_CYCLE, capBattField);
+        if (sdRemaining > 0) {
+            LOG_INFO("Backlog SD masih tersisa %u record, lanjut siklus upload berikutnya", sdRemaining);
+        }
+    }
+
     uint8_t sent = 0;
     bool keepInRtc[PENDING_BUFFER_SIZE] = {false};
     for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) {
         WeatherData d;
         if (!RTCMemory::getPending(i, d)) continue;
-        if (api.uploadWeather(d)) {
+        if (sdRemaining == 0 && api.uploadWeather(d, capBattField)) {
             sent++;
         } else if (sdReady && sd.queuePush(d)) {
-            // Sukses dipindah ke SD -> aman dibuang dari RTC memory.
+            // masuk antrian, dikirim giliran berikutnya sesuai urutan FIFO
         } else {
-            // Gagal terkirim langsung DAN gagal juga dipindah ke SD
-            // (SD tidak ada, atau tulisnya sendiri gagal) -> wajib
-            // tetap di RTC memory, jangan sampai hilang.
             keepInRtc[i] = true;
         }
     }
     uint8_t unsent = count - sent;
-
-    // 2) Coba kirim ulang antrian lama di SD (data dari siklus-siklus
-    //    sebelumnya yang gagal terkirim). Yang sukses (masuk database)
-    //    otomatis dihapus dari SD oleh queueFlush(); yang masih gagal
-    //    tetap tersimpan untuk dicoba lagi di interval berikutnya.
-    uint16_t sdSent = 0, sdRemaining = 0;
-    if (sdReady) {
-        // Batasi maks 20 record per siklus upload
-        static const uint16_t MAX_QUEUE_FLUSH_PER_CYCLE = 20;
-        sd.queueFlush(api, sdSent, sdRemaining, MAX_QUEUE_FLUSH_PER_CYCLE);
-        if (sdRemaining > 0) {
-            LOG_INFO("Backlog SD masih tersisa %u record, lanjut siklus upload berikutnya", sdRemaining);
-        }
-    }
 
     status.wifiRSSI = (int8_t)wifi.getRSSI();
     api.uploadStatus(status);

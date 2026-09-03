@@ -6,9 +6,15 @@ bool SDManager::begin() {
     digitalWrite(CC1101_CSN, HIGH);
 
     SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+
     if (!SD.begin(SD_CS, SPI, 1000000)) {
-        present = false;
-        return false;
+        delay(50);
+        SPI.end();
+        SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+        if (!SD.begin(SD_CS, SPI, 1000000)) {
+            present = false;
+            return false;
+        }
     }
     present = true;
     return true;
@@ -106,7 +112,7 @@ uint16_t SDManager::queueCount() {
 }
 
 void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemaining,
-                            uint16_t maxRecords) {
+                            uint16_t maxRecords, const char* capBattField) {
     outSent = 0;
     outRemaining = 0;
     if (!present) return;
@@ -131,7 +137,7 @@ void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemain
 
         WeatherData d;
         bool parsed = decodeRecord(firstLine, d);
-        bool uploaded = parsed && api.uploadWeather(d);
+        bool uploaded = parsed && api.uploadWeather(d, capBattField);
 
         if (!uploaded) {
             // Gagal (WiFi/server bermasalah, atau baris rusak) -> hentikan
