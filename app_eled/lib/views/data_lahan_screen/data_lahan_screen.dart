@@ -565,18 +565,31 @@ class _BmkgScreenState
           ),
         ),
 
-        buildDataCard(
-          icon:
-              Icons
-                  .battery_full,
-          title:
-              'Status Baterai',
-          value:
-              getValue(
+        // Battery Init
+        // buildDataCard(
+        //   icon:
+        //       Icons
+        //           .battery_full,
+        //   title:
+        //       'Status Baterai',
+        //   value:
+        //       getValue(
+        //     data,
+        //     'batt',
+        //   ),
+        // ),
+
+        buildPowerStatusCard(
+          status: getValue(
             data,
-            'batt',
+              'batt',
           ),
         ),
+
+        // Buat testing on_cap 
+        // buildPowerStatusCard(
+        //   status: 'on_cap',
+        // ),
 
         const SizedBox(
           height:
@@ -719,24 +732,11 @@ class _BmkgScreenState
               Icons
                   .umbrella,
           title:
-              'Rain Delta',
+              'Curah Hujan 1 Jam Terakhir',
           value:
               '${getValue(
             data,
             'rain_delta',
-          )} mm',
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .water,
-          title:
-              'Rain Total',
-          value:
-              '${getValue(
-            data,
-            'rain_total',
           )} mm',
         ),
 
@@ -844,6 +844,115 @@ class _BmkgScreenState
       ),
     );
   }
+
+// =====================================================
+// POWER STATUS CARD
+// =====================================================
+
+Widget buildPowerStatusCard({
+  required String status,
+}) {
+  final normalizedStatus =
+      status.trim().toUpperCase();
+
+  String title;
+  String description;
+  IconData icon;
+  Color statusColor;
+
+  switch (normalizedStatus) {
+    // ===============================
+    // NORMAL
+    // ===============================
+    case 'OK':
+      title = 'Daya Normal';
+      description =
+          'Listrik terhubung dengan baik. Capbank sedang mengisi atau daya perangkat berada dalam kondisi aman.';
+      icon = Icons.check_circle;
+      statusColor = Colors.green;
+      break;
+
+    // ===============================
+    // USING BACKUP POWER
+    // ===============================
+    case 'ON_CAP':
+      title = 'Suplai Cadangan Aktif';
+      description =
+          'Listrik PLN tidak tersedia. Perangkat sedang menggunakan suplai daya cadangan.';
+      icon = Icons.battery_saver;
+      statusColor = Colors.orange;
+      break;
+
+    // ===============================
+    // LOW POWER
+    // ===============================
+    case 'LOW':
+      title = 'Daya Cadangan Menipis';
+      description =
+          'Daya cadangan mulai menipis. Periksa suplai listrik yang masuk ke alat dan pastikan sambungan listrik PLN berfungsi dengan baik.';
+      icon = Icons.battery_2_bar;
+      statusColor = Colors.orange;
+      break;
+
+    // ===============================
+    // CRITICAL POWER
+    // ===============================
+    case 'CRIT':
+      title = 'Daya Kritis';
+      description =
+          'Daya cadangan hampir habis. Perangkat berisiko mati dalam waktu dekat. Segera periksa dan pulihkan suplai listrik ke alat.';
+      icon = Icons.battery_alert;
+      statusColor = Colors.red;
+      break;
+
+    // ===============================
+    // UNKNOWN STATUS
+    // ===============================
+    default:
+      title = 'Status Daya Tidak Diketahui';
+      description =
+          'Status daya perangkat belum dapat dikenali. Periksa kondisi perangkat apabila diperlukan.';
+      icon = Icons.help_outline;
+      statusColor = Colors.grey;
+  }
+
+  return Card(
+    margin: const EdgeInsets.only(
+      bottom: 9,
+    ),
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor:
+            statusColor.withOpacity(0.12),
+        child: Icon(
+          icon,
+          color: statusColor,
+        ),
+      ),
+
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+
+      subtitle: Padding(
+        padding: const EdgeInsets.only(
+          top: 4,
+        ),
+        child: Text(
+          description,
+        ),
+      ),
+
+      trailing: Icon(
+        icon,
+        color: statusColor,
+      ),
+    ),
+  );
+}
 
   // =====================================================
   // GET VALUE
