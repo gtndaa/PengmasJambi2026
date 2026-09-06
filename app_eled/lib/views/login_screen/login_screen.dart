@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../models/user_model.dart';
 import '../../services/api_service.dart';
 import '../../widgets/navigationbar.dart';
 import '../register_screen/register_screen.dart';
@@ -26,7 +28,6 @@ class _LoginScreenState
       ApiService();
 
   bool isLoading = false;
-
   bool obscurePassword = true;
 
   @override
@@ -58,6 +59,10 @@ class _LoginScreenState
     });
 
     try {
+      // ==========================================
+      // LOGIN KE API
+      // ==========================================
+
       final result =
           await apiService.login(
         username: username,
@@ -81,9 +86,99 @@ class _LoginScreenState
         return;
       }
 
+      // ==========================================
+      // AMBIL NAMA DEPAN USER
+      // ==========================================
+
+      final prefs =
+          await SharedPreferences.getInstance();
+
+      final loginIdentifier =
+          username.trim().toLowerCase();
+
+      try {
+        final users =
+            await apiService.getUsers();
+
+        UserModel? matchedUser;
+
+        for (final item in users) {
+          if (item is Map) {
+            final userMap =
+                Map<String, dynamic>.from(
+              item,
+            );
+
+            final candidate =
+                UserModel.fromJson(
+              userMap,
+            );
+
+            final candidateUsername =
+                candidate.username
+                    .trim()
+                    .toLowerCase();
+
+            final candidateEmail =
+                candidate.email
+                    .trim()
+                    .toLowerCase();
+
+            if (candidateUsername ==
+                    loginIdentifier ||
+                candidateEmail ==
+                    loginIdentifier) {
+              matchedUser =
+                  candidate;
+
+              break;
+            }
+          }
+        }
+
+        if (matchedUser != null &&
+            matchedUser.firstName
+                .trim()
+                .isNotEmpty) {
+          final firstName =
+              matchedUser.firstName
+                  .trim();
+
+          await prefs.setString(
+            'user_name',
+            firstName,
+          );
+
+          debugPrint(
+            'NAMA USER DITEMUKAN: '
+            '$firstName',
+          );
+        } else {
+          await prefs.remove(
+            'user_name',
+          );
+
+          debugPrint(
+            'Nama user tidak ditemukan',
+          );
+        }
+      } catch (e) {
+        debugPrint(
+          'Gagal mengambil nama user: $e',
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
         isLoading = false;
       });
+
+      // ==========================================
+      // MASUK KE APLIKASI
+      // ==========================================
 
       Navigator.pushReplacement(
         context,

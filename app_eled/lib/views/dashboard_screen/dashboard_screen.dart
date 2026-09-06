@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../location_screen/location_screen.dart';
-import '../../services/API_service.dart';
+import '../../services/api_service.dart';
 import '../../models/user_model.dart';
 import '../../services/location_storage_service.dart';
 import '../../services/bmkg_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -76,31 +77,35 @@ class _DashboardScreenState
   }
 
   Future<void> _loadUser() async {
-    try {
-      final UserModel? user =
-          await apiService.getCurrentUser();
+  try {
+    final prefs =
+        await SharedPreferences.getInstance();
 
-      if (!mounted) return;
+    final savedName =
+        prefs.getString(
+      'user_name',
+    );
 
-      if (user != null) {
-        setState(() {
-          if (user.firstName.trim().isNotEmpty) {
-            userName = user.firstName.trim();
-          } else if (user.fullName.trim().isNotEmpty) {
-            userName = user.fullName.trim();
-          } else {
-            userName = user.username;
-          }
-        });
+    if (!mounted) return;
 
-        debugPrint(
-            "USER BERHASIL DIMUAT : $userName");
-      }
-    } catch (e) {
-      debugPrint(
-          "Gagal memuat user : $e");
+    if (savedName != null &&
+        savedName.trim().isNotEmpty) {
+      setState(() {
+        userName =
+            savedName.trim();
+      });
+
+            debugPrint(
+        'NAMA USER DASHBOARD: $userName',
+      );
     }
+  } catch (e) {
+    debugPrint(
+      'Gagal memuat nama user: $e',
+    );
   }
+}
+
   // =====================================================
   // LOAD LOKASI YANG TERSIMPAN
   // =====================================================
@@ -502,50 +507,23 @@ class _DashboardScreenState
               CrossAxisAlignment.start,
 
           children: [
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment
-                      .spaceBetween,
-
+            const Row(
               children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.location_on,
-
-                      size: 22,
-                    ),
-
-                    SizedBox(
-                      width: 8,
-                    ),
-
-                    Text(
-                      'Lokasi Anda',
-
-                      style:
-                          TextStyle(
-                        fontSize: 18,
-
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  Icons.location_on,
+                  size: 22,
                 ),
 
-                TextButton.icon(
-                  onPressed:
-                      _updateLocation,
+                SizedBox(
+                  width: 8,
+                ),
 
-                  icon: const Icon(
-                    Icons.edit_location_alt,
-
-                    size: 18,
-                  ),
-
-                  label: const Text(
-                    'Update',
+                Text(
+                  'Lokasi Anda',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
               ],
