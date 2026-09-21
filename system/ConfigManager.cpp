@@ -19,6 +19,10 @@ bool ConfigManager::load(DeviceConfig& cfg) {
     cfg.sleepInterval = prefs.getULong("sleepInt", SLEEP_INTERVAL_MS);
     cfg.useDeepSleep = prefs.getBool("useDeepSlp", true);
     cfg.configVersion = prefs.getUInt("cfgVersion", 0);
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    // Default true: boot pertama (key belum ada di NVS) = WPA2-Enterprise.
+    cfg.wifiEnterprise = prefs.getBool("wifiEnt", true);
+/**/
     LOG_DEBUG("Config loaded: uploadInterval=%lu, listenWindow=%lu, configVersion=%u",
                cfg.uploadInterval, cfg.listenWindow, (unsigned)cfg.configVersion);
     return true;
@@ -34,6 +38,9 @@ bool ConfigManager::save(const DeviceConfig& cfg) {
     prefs.putULong("sleepInt", cfg.sleepInterval);
     prefs.putBool("useDeepSlp", cfg.useDeepSleep);
     prefs.putUInt("cfgVersion", cfg.configVersion);
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    prefs.putBool("wifiEnt", cfg.wifiEnterprise);
+/**/
     LOG_INFO("Config saved (configVersion=%u)", (unsigned)cfg.configVersion);
     return true;
 }
@@ -50,6 +57,10 @@ bool ConfigManager::updateFromJSON(const String& json) {
 
     if (doc.containsKey("wifiSSID")) newCfg.wifiSSID = doc["wifiSSID"].as<String>();
     if (doc.containsKey("wifiPassword")) newCfg.wifiPassword = doc["wifiPassword"].as<String>();
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    // WiFi diubah lewat JSON -> keluar dari mode enterprise, pakai ssid+pass biasa.
+    if (doc.containsKey("wifiSSID") || doc.containsKey("wifiPassword")) newCfg.wifiEnterprise = false;
+/**/
     if (doc.containsKey("serverURL")) newCfg.serverURL = doc["serverURL"].as<String>();
     if (doc.containsKey("apiKey")) newCfg.apiKey = doc["apiKey"].as<String>();
     if (doc.containsKey("uploadInterval")) newCfg.uploadInterval = doc["uploadInterval"].as<unsigned long>();
