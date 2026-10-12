@@ -215,6 +215,13 @@ struct DeviceConfig {
     // Versi konfigurasi terakhir yang sudah diproses dari server.
     // 0 = belum pernah sinkron sama sekali (kondisi awal / first boot).
     uint32_t configVersion = 0;
+
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    // [WPA2-ENTERPRISE] true = konek pakai kredensial enterprise dari
+    // secrets.h (WIFI_ENT_*), abaikan wifiSSID/wifiPassword. Otomatis
+    // jadi false kalau WiFi diganti lewat config.
+    bool wifiEnterprise = false;
+/**/
 };
 
 // 4.4 WifiCredentials
@@ -574,6 +581,17 @@ public:
                               const char* fallbackSsid,
                               const char* fallbackPassword,
                               unsigned long timeoutMs = 15000);
+
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    // Konek ke WPA2-Enterprise (PEAP/MSCHAPv2) pakai WIFI_ENT_* di secrets.h.
+    bool connectEnterprise(unsigned long timeoutMs = WIFI_ENT_TIMEOUT_MS);
+
+    // Sama seperti connectWithFallback(), tapi kalau gagal pindah ke
+    // kredensial baru, fallback-nya kembali ke WPA2-Enterprise
+    // (bukan ke personal ssid/password).
+    bool connectWithFallbackToEnterprise(const WifiCredentials& newCreds,
+                                          unsigned long timeoutMs = 15000);
+/**/
 
     int getRSSI() const;
     void disconnect();

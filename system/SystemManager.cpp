@@ -278,7 +278,16 @@ void SystemManager::upload() {
     // Konek pakai kredensial yang sudah diketahui berhasil (tersimpan di NVS,
     // default-nya dari secrets.h saat pertama kali boot).
     WifiManager wifi;
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+    // Boot pertama: WPA2-Enterprise. Setelah WiFi diganti lewat config -> personal.
+    LOG_INFO("[WIFI] Mode boot ini: %s", cfg.wifiEnterprise ? "WPA2-Enterprise" : "WPA/WPA2 Personal");
+    bool wifiOk = cfg.wifiEnterprise
+                    ? wifi.connectEnterprise()
+                    : wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str());
+    if (!wifiOk) {
+/*/ // UNCOMMENT THIS LINE FOR NON ENTERPRISE USAGE
     if (!wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str())) {
+/**/
         LOG_ERROR("Gagal konek WiFi");
         if (sdReady) {
             // Pindahkan semua data yang baru terkumpul ke SD supaya tidak
@@ -352,12 +361,24 @@ void SystemManager::upload() {
                 WifiCredentials newCreds;
                 newCreds.ssid = remote.ssid;
                 newCreds.password = remote.password;
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+                bool switched = cfg.wifiEnterprise
+                    ? wifi.connectWithFallbackToEnterprise(newCreds)
+                    : wifi.connectWithFallback(newCreds,
+                                                cfg.wifiSSID.c_str(),
+                                                cfg.wifiPassword.c_str());
+/* // UNCOMMENT THIS LINE FOR NON ENTERPRISE USAGE
                 bool switched = wifi.connectWithFallback(newCreds,
                                                            cfg.wifiSSID.c_str(),
                                                            cfg.wifiPassword.c_str());
+*/
                 if (switched) {
                     cfg.wifiSSID = remote.ssid;
                     cfg.wifiPassword = remote.password;
+/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
+                    cfg.wifiEnterprise = false;   // sudah pindah ke personal, jangan enterprise lagi
+                    LOG_INFO("[WIFI] Mode diubah ke WPA/WPA2 Personal (disimpan ke NVS)");
+/**/
                     changed = true;
                     LOG_INFO("WiFi diganti ke SSID baru: %s", remote.ssid.c_str());
                 } else {
