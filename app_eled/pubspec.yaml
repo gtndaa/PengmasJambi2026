@@ -28,6 +28,7 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  fl_chart: ^1.0.0
   flutter:
     sdk: flutter
   http: ^1.2.2
@@ -40,6 +41,7 @@ dependencies:
   xml: ^6.6.1
   flutter_local_notifications: ^22.3.0
   workmanager: ^0.10.7
+  google_fonts: ^6.2.1
   
 dev_dependencies:
   flutter_test:
@@ -51,6 +53,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

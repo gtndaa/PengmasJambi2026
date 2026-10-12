@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
+import '../../consts/colors.dart';
+import '../../models/sensor_metric.dart';
+import '../../widgets/sensor_history_chart.dart';
 
 class BmkgScreen
     extends StatefulWidget {
@@ -57,6 +60,8 @@ class _BmkgScreenState
 
   DateTime?
       lastUpdated;
+      // Data yang dipilih untuk grafik
+      SensorMetric selectedMetric = SensorMetric.temperature;
 
   // =====================================================
   // INIT STATE
@@ -510,12 +515,6 @@ class _BmkgScreenState
                   ),
                 ),
 
-                const Icon(
-                  Icons
-                      .check_circle,
-                  color:
-                      Colors.green,
-                ),
               ],
             ),
           ),
@@ -525,6 +524,22 @@ class _BmkgScreenState
           height:
               15,
         ),
+
+          buildSectionTitle('Kondisi Saat Ini'),
+          const SizedBox(height: 10),
+          buildMetricGrid(data),
+          const SizedBox(height: 22),
+
+          buildSectionTitle('Grafik Riwayat'),
+          const SizedBox(height: 4),
+          Text(
+            'Ketuk salah satu kotak di atas untuk memilih data, '
+            'lalu pilih rentang waktunya.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          SensorHistoryChart(metric: selectedMetric),
+          const SizedBox(height: 22),
 
         // ===============================================
         // DEVICE INFORMATION
@@ -600,150 +615,8 @@ class _BmkgScreenState
         // TEMPERATURE
         // ===============================================
 
-        buildSectionTitle(
-          'Kondisi Lingkungan',
-        ),
+   
 
-        const SizedBox(
-          height:
-              8,
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .thermostat,
-          title:
-              'Suhu',
-          value:
-              '${getValue(
-            data,
-            'temp_out',
-          )} °C',
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .water_drop,
-          title:
-              'Kelembapan',
-          value:
-              '${getValue(
-            data,
-            'hum_out',
-          )} %',
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .light_mode,
-          title:
-              'Intensitas Cahaya',
-          value:
-              '${getValue(
-            data,
-            'light_lux',
-          )} lux',
-        ),
-
-        const SizedBox(
-          height:
-              15,
-        ),
-
-        // ===============================================
-        // WIND
-        // ===============================================
-
-        buildSectionTitle(
-          'Kondisi Angin',
-        ),
-
-        const SizedBox(
-          height:
-              8,
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .air,
-          title:
-              'Kecepatan Angin',
-          value:
-              '${getValue(
-            data,
-            'wind_speed',
-          )} m/s',
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .speed,
-          title:
-              'Wind Gust',
-          value:
-              '${getValue(
-            data,
-            'wind_gust',
-          )} m/s',
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .explore,
-          title:
-              'Arah Angin',
-          value:
-              '${getValue(
-            data,
-            'wind_dir',
-          )} '
-              '(${getValue(
-            data,
-            'wind_deg',
-          )}°)',
-        ),
-
-        const SizedBox(
-          height:
-              15,
-        ),
-
-        // ===============================================
-        // RAIN
-        // ===============================================
-
-        buildSectionTitle(
-          'Curah Hujan',
-        ),
-
-        const SizedBox(
-          height:
-              8,
-        ),
-
-        buildDataCard(
-          icon:
-              Icons
-                  .umbrella,
-          title:
-              'Curah Hujan 1 Jam Terakhir',
-          value:
-              '${getValue(
-            data,
-            'rain_delta',
-          )} mm',
-        ),
-
-        const SizedBox(
-          height:
-              20,
-        ),
 
         // ===============================================
         // LAST UPDATE
@@ -802,6 +675,134 @@ class _BmkgScreenState
   }
 
   // =====================================================
+  // GRID DATA SENSOR SAAT INI
+  // =====================================================
+  Widget buildMetricGrid(Map<String, dynamic> data) {
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 0.82,
+      children: [
+        _metricTile(
+          metric: SensorMetric.temperature,
+          value: getValue(data, 'temp_out'),
+        ),
+        _metricTile(
+          metric: SensorMetric.humidity,
+          value: getValue(data, 'hum_out'),
+        ),
+        _metricTile(
+          metric: SensorMetric.light,
+          value: getValue(data, 'light_lux'),
+        ),
+        _metricTile(
+          metric: SensorMetric.rain,
+          value: getValue(data, 'rain_delta'),
+        ),
+        _metricTile(
+          metric: SensorMetric.wind,
+          value: getWindSpeedKmh(data, 'wind_speed'),
+        ),
+        _metricTile(
+          metric: SensorMetric.gust,
+          value: getWindSpeedKmh(data, 'wind_gust'),
+        ),
+        // dua kotak info saja (tidak bisa dipilih untuk grafik)
+        _metricTile(
+          icon: Icons.explore_outlined,
+          label: 'Arah Angin',
+          value: getValue(data, 'wind_dir'),
+        ),
+        _metricTile(
+          icon: Icons.battery_charging_full,
+          label: 'Baterai',
+          value: getValue(data, 'batt'),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricTile({
+    SensorMetric? metric,
+    IconData? icon,
+    String? label,
+    required String value,
+  }) {
+    final selected = metric != null && metric == selectedMetric;
+    final unit = metric?.unit ?? '';
+
+    return GestureDetector(
+      onTap: metric == null
+          ? null
+          : () => setState(() => selectedMetric = metric),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: AppColors.blueGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: selected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? Colors.transparent : const Color(0xFFE3E9F0),
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.30),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              metric?.icon ?? icon,
+              size: 22,
+              color: selected ? Colors.white : AppColors.primary,
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                unit.isEmpty ? value : '$value $unit',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : AppColors.ink,
+                ),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              metric?.label ?? label ?? '',
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.2,
+                color: selected ? Colors.white70 : AppColors.inkSoft,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
   // DATA CARD
   // =====================================================
 
@@ -820,10 +821,11 @@ class _BmkgScreenState
       child:
           ListTile(
         leading:
-            CircleAvatar(
+          CircleAvatar(
+          backgroundColor: AppColors.primary.withValues(alpha: 0.12),
           child:
               Icon(
-            icon,
+            icon, color: AppColors.primary
           ),
         ),
 
@@ -974,6 +976,26 @@ Widget buildPowerStatusCard({
         .toString();
   }
 
+  String getWindSpeedKmh(
+  Map<String, dynamic> data,
+  String key,
+) {
+  final value = data[key];
+
+  if (value == null) {
+    return '-';
+  }
+
+  final speedMs = double.tryParse(value.toString());
+
+  if (speedMs == null) {
+    return '-';
+  }
+
+  final speedKmh = speedMs * 3.6;
+
+  return speedKmh.toStringAsFixed(2);
+}
   // =====================================================
   // FORMAT INTERVAL
   // =====================================================

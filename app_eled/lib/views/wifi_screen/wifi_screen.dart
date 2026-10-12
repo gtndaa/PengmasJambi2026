@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
+import '../../consts/colors.dart';
+import '../../widgets/gradient_header.dart';
 
 class WifiScreen
     extends StatefulWidget {
@@ -332,13 +334,7 @@ class _WifiScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      appBar:
-          AppBar(
-        title:
-            const Text(
-          'WiFi Settings',
-        ),
-      ),
+      backgroundColor: AppColors.background,
 
       body:
           SafeArea(
@@ -356,50 +352,13 @@ class _WifiScreenState
                     .stretch,
 
             children: [
-              // =========================================
-              // HEADER
-              // =========================================
-
-              const Icon(
-                Icons.wifi,
-                size: 70,
-                color:
-                    Colors.blue,
+                const GradientHeader(
+                icon: Icons.wifi,
+                title: 'Konfigurasi Perangkat',
+                subtitle: 'Atur koneksi WiFi dan pengaturan operasi ESP32.',
+                colors: AppColors.blueGradient,
               ),
-
-              const SizedBox(
-                height: 10,
-              ),
-
-              const Text(
-                'Konfigurasi Perangkat',
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                  fontSize:
-                      24,
-
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(
-                height: 6,
-              ),
-
-              const Text(
-                'Atur koneksi WiFi '
-                'dan pengaturan '
-                'operasi ESP32.',
-                textAlign:
-                    TextAlign.center,
-              ),
-
-              const SizedBox(
-                height: 22,
-              ),
+              const SizedBox(height: 18),
 
               // =========================================
               // WIFI STATUS
@@ -430,16 +389,22 @@ class _WifiScreenState
                             .stretch,
 
                     children: [
-                      const Text(
-                        'WiFi Settings',
-                        style:
-                            TextStyle(
-                          fontSize:
-                              18,
-
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                      const Row(
+                        children: [
+                          IconBadge(
+                            icon: Icons.wifi,
+                            color: AppColors.primary,
+                            size: 36,
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'WiFi Settings',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
 
                       const SizedBox(
@@ -537,6 +502,8 @@ class _WifiScreenState
               Card(
                 child:
                     ExpansionTile(
+                  shape: const Border(),
+                  collapsedShape:  const Border(),
                   initiallyExpanded:
                       isAdvancedExpanded,
 
@@ -550,10 +517,10 @@ class _WifiScreenState
                     );
                   },
 
-                  leading:
-                      const Icon(
-                    Icons
-                        .settings,
+                  leading: const IconBadge(
+                    icon: Icons.tune,
+                    color: Color(0xFF8E7CFF),
+                    size: 36,
                   ),
 
                   title:
@@ -755,6 +722,13 @@ class _WifiScreenState
 
                 child:
                     ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)
+                      ),
+                    ),
                   onPressed:
                       isSending
                           ? null
@@ -773,6 +747,7 @@ class _WifiScreenState
                                   CircularProgressIndicator(
                                 strokeWidth:
                                     2,
+                                color: Colors.white,
                               ),
                             )
                           : const Icon(

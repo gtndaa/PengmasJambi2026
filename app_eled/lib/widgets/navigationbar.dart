@@ -5,6 +5,7 @@ import '../views/wifi_screen/wifi_screen.dart';
 import '../views/data_lahan_screen/data_lahan_screen.dart';
 import '../views/notification_screen/notification_screen.dart';
 import '../views/profile_screen/profile_screen.dart';
+import '../consts/colors.dart';
 
 class NavigationMenu
     extends StatefulWidget {
@@ -34,86 +35,67 @@ class _NavigationMenuState
   ];
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: IndexedStack(
-        index:
-            currentIndex,
-
-        children:
-            pages,
+        index: currentIndex,
+        children: pages,
       ),
-
-      bottomNavigationBar:
-          BottomNavigationBar(
-        currentIndex:
-            currentIndex,
-
-        type:
-            BottomNavigationBarType
-                .fixed,
-
-        onTap:
-            (index) {
-          setState(() {
-            currentIndex =
-                index;
-          });
-        },
-
-        items: const [
-          BottomNavigationBarItem(
-            icon:
-                Icon(
-              Icons.dashboard,
-            ),
-
-            label:
-                'Home',
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-
-          BottomNavigationBarItem(
-            icon:
-                Icon(
-              Icons.wifi,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BottomNavigationBar(
+              currentIndex: currentIndex,
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              selectedItemColor: AppColors.primary,
+              unselectedItemColor: Colors.grey.shade400,
+              showUnselectedLabels: false,
+              onTap: (index) {
+                setState(() {
+                  currentIndex = index;
+                });
+              },
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.dashboard),
+                  label: 'Home',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.wifi),
+                  label: 'WiFi',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.agriculture),
+                  label: 'Data Lahan',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.notifications),
+                  label: 'Alert',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person),
+                  label: 'Profile',
+                ),
+              ],
             ),
-
-            label:
-                'WiFi',
           ),
-
-          BottomNavigationBarItem(
-            icon:
-                Icon(
-              Icons.agriculture,
-            ),
-
-            label:
-                'Data Lahan',
-          ),
-
-          BottomNavigationBarItem(
-            icon:
-                Icon(
-              Icons.notifications,
-            ),
-
-            label:
-                'Alert',
-          ),
-
-          BottomNavigationBarItem(
-            icon:
-                Icon(
-              Icons.person,
-            ),
-
-            label:
-                'Profile',
-          ),
-        ],
+        ),
       ),
     );
   }
