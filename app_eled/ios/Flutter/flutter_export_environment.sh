@@ -1,8 +1,8 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
 export "FLUTTER_ROOT=C:\Pengmas\PengmasJambi2026\flutter"
-export "FLUTTER_APPLICATION_PATH=C:\Pengmas\PengmasJambi2026\app_eled"
-export "FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=C:\Pengmas\PengmasJambi2026\app_eled\ios\Flutter\ephemeral\Packages\.packages\FlutterFramework"
+export "FLUTTER_APPLICATION_PATH=C:\Pengmas_last\PengmasJambi2026-main\app_eled"
+export "FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=C:\Pengmas_last\PengmasJambi2026-main\app_eled\ios\Flutter\ephemeral\Packages\.packages\FlutterFramework"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_TARGET=lib\main.dart"
 export "FLUTTER_BUILD_DIR=build"

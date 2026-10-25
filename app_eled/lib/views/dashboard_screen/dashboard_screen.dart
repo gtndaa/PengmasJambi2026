@@ -13,19 +13,15 @@ class DashboardScreen extends StatefulWidget {
   });
 
   @override
-  State<DashboardScreen> createState() =>
-      _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState
-    extends State<DashboardScreen> {
-
+class _DashboardScreenState extends State<DashboardScreen> {
   // =====================================================
   // SERVICE BMKG
   // =====================================================
 
-  final BmkgService bmkgService =
-      BmkgService();
+  final BmkgService bmkgService = BmkgService();
 
   // =====================================================
   // DATA USER
@@ -34,12 +30,12 @@ class _DashboardScreenState
   String userName = 'User';
 
   final ApiService apiService = ApiService();
+
   // =====================================================
   // DATA LOKASI
   // =====================================================
 
-  String selectedProvince =
-      'Lokasi belum dipilih';
+  String selectedProvince = 'Lokasi belum dipilih';
 
   String selectedRegency = '';
 
@@ -77,34 +73,30 @@ class _DashboardScreenState
   }
 
   Future<void> _loadUser() async {
-  try {
-    final prefs =
-        await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    final savedName =
-        prefs.getString(
-      'user_name',
-    );
+      final savedName = prefs.getString(
+        'user_name',
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (savedName != null &&
-        savedName.trim().isNotEmpty) {
-      setState(() {
-        userName =
-            savedName.trim();
-      });
+      if (savedName != null && savedName.trim().isNotEmpty) {
+        setState(() {
+          userName = savedName.trim();
+        });
 
-            debugPrint(
-        'NAMA USER DASHBOARD: $userName',
+        debugPrint(
+          'NAMA USER DASHBOARD: $userName',
+        );
+      }
+    } catch (e) {
+      debugPrint(
+        'Gagal memuat nama user: $e',
       );
     }
-  } catch (e) {
-    debugPrint(
-      'Gagal memuat nama user: $e',
-    );
   }
-}
 
   // =====================================================
   // LOAD LOKASI YANG TERSIMPAN
@@ -112,50 +104,34 @@ class _DashboardScreenState
 
   Future<void> _loadSavedLocation() async {
     try {
-      final location =
-          await LocationStorageService
-              .getLocation();
+      final location = await LocationStorageService.getLocation();
 
       if (!mounted) return;
 
       if (location != null) {
         setState(() {
-          selectedProvince =
-              location['province'] ?? '';
+          selectedProvince = location['province'] ?? '';
 
-          selectedRegency =
-              location['regency'] ?? '';
+          selectedRegency = location['regency'] ?? '';
 
-          selectedDistrict =
-              location['district'] ?? '';
+          selectedDistrict = location['district'] ?? '';
 
-          selectedVillage =
-              location['village'] ?? '';
+          selectedVillage = location['village'] ?? '';
 
-          selectedAdm4 =
-              location['adm4'] ?? '';
+          selectedAdm4 = location['adm4'] ?? '';
         });
 
-        debugPrint(
-          '================================',
-        );
-
-        debugPrint(
-          'LOKASI TERSIMPAN DITEMUKAN',
-        );
-
-        debugPrint(
-          'ADM4: $selectedAdm4',
-        );
-
-        debugPrint(
-          '================================',
-        );
+        debugPrint('================================');
+        debugPrint('LOKASI TERSIMPAN DITEMUKAN');
+        debugPrint('ADM4: $selectedAdm4');
+        debugPrint('================================');
 
         // Ambil data cuaca setelah lokasi berhasil dimuat
         if (selectedAdm4.isNotEmpty) {
           await _loadWeather();
         }
+      } else {
+        debugPrint('LOKASI BELUM ADA DI PENYIMPANAN (adm4 kosong)');
       }
 
       if (!mounted) return;
@@ -169,8 +145,7 @@ class _DashboardScreenState
       setState(() {
         isLoadingLocation = false;
 
-        weatherError =
-            'Gagal memuat lokasi: $e';
+        weatherError = 'Gagal memuat lokasi: $e';
       });
 
       debugPrint(
@@ -197,27 +172,14 @@ class _DashboardScreenState
         weatherError = '';
       });
 
-      debugPrint(
-        '================================',
-      );
+      debugPrint('================================');
+      debugPrint('REQUEST DATA CUACA BMKG');
+      debugPrint('ADM4: $selectedAdm4');
+      debugPrint('================================');
 
-      debugPrint(
-        'REQUEST DATA CUACA BMKG',
+      final result = await bmkgService.getWeatherData(
+        selectedAdm4,
       );
-
-      debugPrint(
-        'ADM4: $selectedAdm4',
-      );
-
-      debugPrint(
-        '================================',
-      );
-
-      final result =
-          await bmkgService
-              .getWeatherData(
-            selectedAdm4,
-          );
 
       if (!mounted) return;
 
@@ -227,46 +189,23 @@ class _DashboardScreenState
         isLoadingWeather = false;
       });
 
-      debugPrint(
-        '================================',
-      );
-
-      debugPrint(
-        'DATA CUACA BERHASIL DITERIMA',
-      );
-
-      debugPrint(
-        '$result',
-      );
-
-      debugPrint(
-        '================================',
-      );
+      debugPrint('================================');
+      debugPrint('DATA CUACA BERHASIL DITERIMA');
+      debugPrint('$result');
+      debugPrint('================================');
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
         isLoadingWeather = false;
 
-        weatherError =
-            'Gagal mengambil data cuaca:\n$e';
+        weatherError = 'Gagal mengambil data cuaca:\n$e';
       });
 
-      debugPrint(
-        '================================',
-      );
-
-      debugPrint(
-        'ERROR DATA CUACA',
-      );
-
-      debugPrint(
-        '$e',
-      );
-
-      debugPrint(
-        '================================',
-      );
+      debugPrint('================================');
+      debugPrint('ERROR DATA CUACA');
+      debugPrint('$e');
+      debugPrint('================================');
     }
   }
 
@@ -275,36 +214,26 @@ class _DashboardScreenState
   // =====================================================
 
   Future<void> _updateLocation() async {
-    final result =
-        await Navigator.push(
+    final result = await Navigator.push(
       context,
-
       MaterialPageRoute(
-        builder: (context) =>
-            const LocationScreen(),
+        builder: (context) => const LocationScreen(),
       ),
     );
 
     if (!mounted) return;
 
-    if (result != null &&
-        result is Map<String, String>) {
-
+    if (result != null && result is Map<String, String>) {
       setState(() {
-        selectedProvince =
-            result['province'] ?? '';
+        selectedProvince = result['province'] ?? '';
 
-        selectedRegency =
-            result['regency'] ?? '';
+        selectedRegency = result['regency'] ?? '';
 
-        selectedDistrict =
-            result['district'] ?? '';
+        selectedDistrict = result['district'] ?? '';
 
-        selectedVillage =
-            result['village'] ?? '';
+        selectedVillage = result['village'] ?? '';
 
-        selectedAdm4 =
-            result['adm4'] ?? '';
+        selectedAdm4 = result['adm4'] ?? '';
 
         // Hapus data cuaca lama
         weatherData = null;
@@ -312,37 +241,14 @@ class _DashboardScreenState
         weatherError = '';
       });
 
-      debugPrint(
-        '================================',
-      );
-
-      debugPrint(
-        'LOKASI BERHASIL DIPERBARUI',
-      );
-
-      debugPrint(
-        'PROVINSI: $selectedProvince',
-      );
-
-      debugPrint(
-        'KABUPATEN/KOTA: $selectedRegency',
-      );
-
-      debugPrint(
-        'KECAMATAN: $selectedDistrict',
-      );
-
-      debugPrint(
-        'KELURAHAN/DESA: $selectedVillage',
-      );
-
-      debugPrint(
-        'ADM4: $selectedAdm4',
-      );
-
-      debugPrint(
-        '================================',
-      );
+      debugPrint('================================');
+      debugPrint('LOKASI BERHASIL DIPERBARUI');
+      debugPrint('PROVINSI: $selectedProvince');
+      debugPrint('KABUPATEN/KOTA: $selectedRegency');
+      debugPrint('KECAMATAN: $selectedDistrict');
+      debugPrint('KELURAHAN/DESA: $selectedVillage');
+      debugPrint('ADM4: $selectedAdm4');
+      debugPrint('================================');
 
       // Ambil cuaca dari lokasi baru
       await _loadWeather();
@@ -360,8 +266,7 @@ class _DashboardScreenState
     if (isLoadingLocation) {
       return const Scaffold(
         body: Center(
-          child:
-              CircularProgressIndicator(),
+          child: CircularProgressIndicator(),
         ),
       );
     }
@@ -377,31 +282,20 @@ class _DashboardScreenState
               await _loadWeather();
             }
           },
-
           child: SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-
-            padding:
-                const EdgeInsets.all(20),
-
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(),
-
                 const SizedBox(
                   height: 24,
                 ),
-
                 _buildCurrentWeatherCard(),
-
                 const SizedBox(
                   height: 24,
                 ),
-
                 _buildModernForecastSection(),
               ],
             ),
@@ -417,57 +311,37 @@ class _DashboardScreenState
 
   Widget _buildHeader() {
     return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.spaceBetween,
-
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Hai, $userName!',
-
               style: const TextStyle(
                 fontSize: 28,
-
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(
               height: 6,
             ),
-
             Text(
               'Selamat datang kembali',
-
               style: TextStyle(
-                color:
-                    Colors.grey.shade600,
-
+                color: Colors.grey.shade600,
                 fontSize: 14,
               ),
             ),
           ],
         ),
-
         CircleAvatar(
           radius: 24,
-
           child: Text(
-            userName.isEmpty
-                ? "U"
-                : userName[0].toUpperCase(),
-  
-            style:
-                const TextStyle(
+            userName.isEmpty ? "U" : userName[0].toUpperCase(),
+            style: const TextStyle(
               fontSize: 20,
-
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
@@ -495,6 +369,9 @@ class _DashboardScreenState
     }
 
     if (weatherData == null) {
+      // PERBAIKAN: kalau adm4 kosong, tombol membuka layar pilih lokasi
+      final bool belumPilihLokasi = selectedAdm4.isEmpty;
+
       return Card(
         elevation: 2,
         shape: RoundedRectangleBorder(
@@ -519,6 +396,15 @@ class _DashboardScreenState
                 ),
               ),
 
+              // PERBAIKAN: pesan penjelasan saat lokasi belum dipilih
+              if (belumPilihLokasi) ...[
+                const SizedBox(height: 10),
+                const Text(
+                  'Lokasi belum dipilih. Pilih lokasi untuk melihat cuaca.',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
               if (weatherError.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Text(
@@ -532,11 +418,14 @@ class _DashboardScreenState
 
               const SizedBox(height: 16),
 
+              // PERBAIKAN: tombol berubah sesuai kondisi
               ElevatedButton.icon(
-                onPressed: _loadWeather,
-                icon: const Icon(Icons.refresh),
-                label: const Text(
-                  'Muat Ulang Cuaca',
+                onPressed: belumPilihLokasi ? _updateLocation : _loadWeather,
+                icon: Icon(
+                  belumPilihLokasi ? Icons.location_on : Icons.refresh,
+                ),
+                label: Text(
+                  belumPilihLokasi ? 'Pilih Lokasi' : 'Muat Ulang Cuaca',
                 ),
               ),
             ],
@@ -560,20 +449,15 @@ class _DashboardScreenState
 
     final current = forecasts.first;
 
-    final temperature =
-        current['t']?.toString() ?? '--';
+    final temperature = current['t']?.toString() ?? '--';
 
-    final weather =
-        current['weather_desc'] ??
-            'Tidak tersedia';
+    final weather = current['weather_desc'] ?? 'Tidak tersedia';
 
-    final humidity =
-        current['hu']?.toString() ?? '--';
+    final humidity = current['hu']?.toString() ?? '--';
 
-    final wind =
-        current['ws']?.toString() ?? '--';
-    
-        final cloud = current['tcc']?.toString() ?? '--';
+    final wind = current['ws']?.toString() ?? '--';
+
+    final cloud = current['tcc']?.toString() ?? '--';
     final gradient = AppColors.weatherGradient(weather);
 
     return Container(
@@ -639,8 +523,7 @@ class _DashboardScreenState
             ),
           ),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.22),
               borderRadius: BorderRadius.circular(20),
@@ -733,23 +616,19 @@ class _DashboardScreenState
       return [];
     }
 
-    final data =
-        weatherData!['data'];
+    final data = weatherData!['data'];
 
-    if (data is! List ||
-        data.isEmpty) {
+    if (data is! List || data.isEmpty) {
       return [];
     }
 
-    final cuaca =
-        data[0]['cuaca'];
+    final cuaca = data[0]['cuaca'];
 
     if (cuaca is! List) {
       return [];
     }
 
-    final List<dynamic> forecasts =
-        [];
+    final List<dynamic> forecasts = [];
 
     for (final day in cuaca) {
       if (day is List) {
@@ -767,9 +646,8 @@ class _DashboardScreenState
   Widget _buildModernForecastSection() {
     final forecasts = _getForecasts();
 
-    final upcoming = forecasts.length > 1
-        ? forecasts.sublist(1)
-        : <dynamic>[];
+    final upcoming =
+        forecasts.length > 1 ? forecasts.sublist(1) : <dynamic>[];
 
     final size = MediaQuery.sizeOf(context);
     final itemWidth = (size.width - 40) / 4; // 4 item per layar (padding 20+20)
@@ -821,9 +699,7 @@ class _DashboardScreenState
             ),
           ],
         ),
-
         const SizedBox(height: 14),
-
         upcoming.isEmpty
             ? const Padding(
                 padding: EdgeInsets.all(8),
@@ -845,8 +721,11 @@ class _DashboardScreenState
                   itemCount: upcoming.length > 8 ? 8 : upcoming.length,
                   itemBuilder: (context, index) {
                     final forecast = upcoming[index];
+
                     final temperature = forecast['t']?.toString() ?? '--';
+
                     final weather = forecast['weather_desc'] ?? '-';
+
                     final dateTime = forecast['local_datetime'] ?? '';
 
                     return _buildForecastStripItem(
@@ -897,7 +776,7 @@ class _DashboardScreenState
     double size = 32,
   }) {
     final text = weather.toLowerCase();
-    
+
     IconData icon;
     Color color;
 
@@ -985,14 +864,20 @@ class _DashboardScreenState
                         const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final forecast = forecasts[index];
+
                       final weather =
                           (forecast['weather_desc'] ?? '-').toString();
+
                       final temperature = forecast['t']?.toString() ?? '--';
+
                       final humidity = forecast['hu']?.toString() ?? '--';
+
                       final raw =
                           (forecast['local_datetime'] ?? '-').toString();
+
                       final dateTime =
                           raw.length >= 16 ? raw.substring(0, 16) : raw;
+
                       final tint = AppColors.weatherGradient(weather).first;
 
                       return Container(
@@ -1012,7 +897,8 @@ class _DashboardScreenState
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Center(
-                                child: _getColoredWeatherIcon(weather, size: 30),
+                                child:
+                                    _getColoredWeatherIcon(weather, size: 30),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -1090,7 +976,7 @@ class _DashboardScreenState
       },
     );
   }
-  
+
   // =====================================================
   // ICON CUACA
   // =====================================================
@@ -1098,11 +984,9 @@ class _DashboardScreenState
   IconData _getWeatherIconData(
     String weather,
   ) {
-    final text =
-        weather.toLowerCase();
+    final text = weather.toLowerCase();
 
-    if (text.contains('petir') ||
-        text.contains('badai')) {
+    if (text.contains('petir') || text.contains('badai')) {
       return Icons.thunderstorm;
     }
 

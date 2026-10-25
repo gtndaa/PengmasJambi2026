@@ -247,8 +247,8 @@ class _LoginScreenState
               children: [
                 const GradientHeader(
                   icon: Icons.agriculture,
-                  title: 'ELED',
-                  subtitle: 'Aplikasi Monitoring Cuaca Lahan',
+                  title: 'App ELED',
+                  subtitle: 'Login untuk melanjutkan',
                   colors: AppColors.blueGradient,
                 ),
                 const SizedBox(height: 20),

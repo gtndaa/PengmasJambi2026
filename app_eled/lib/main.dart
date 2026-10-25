@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:ui';
 
 import 'package:workmanager/workmanager.dart';
 
@@ -53,22 +55,26 @@ Future<void> main() async {
 
   await LocalNotificationService.initialize();
 
-  await Workmanager().initialize(
-    callbackDispatcher,
-  );
+  // Workmanager dipakai untuk tugas background di platform native.
+  // Browser Web tidak mendukung penjadwalan background melalui plugin ini.
+  if (!kIsWeb) {
+    await Workmanager().initialize(
+      callbackDispatcher,
+    );
 
-  await Workmanager().registerPeriodicTask(
-    'weather-alert-periodic',
-    weatherAlertTaskName,
-    frequency: const Duration(minutes: 15),
-    existingWorkPolicy:
-        ExistingPeriodicWorkPolicy.update,
-    constraints: Constraints(
-      networkType: NetworkType.connected,
-    ),
-  );
+    await Workmanager().registerPeriodicTask(
+      'weather-alert-periodic',
+      weatherAlertTaskName,
+      frequency: const Duration(minutes: 15),
+      existingWorkPolicy:
+          ExistingPeriodicWorkPolicy.update,
+      constraints: Constraints(
+        networkType: NetworkType.connected,
+      ),
+    );
+  }
 
-runApp(const MyApp());
+  runApp(const MyApp());
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await LocalNotificationService.requestPermission();

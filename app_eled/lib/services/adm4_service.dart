@@ -1,6 +1,7 @@
+
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 
 class Adm4Data {
   final String adm4;
@@ -19,9 +20,37 @@ class Adm4Data {
 }
 
 class Adm4Service {
-  // =========================================================
-  // MENCARI ADM4 SECARA OTOMATIS DARI NAMA LOKASI
-  // =========================================================
+  static const String _assetPath =
+      'assets/data/indonesia_wilayah.json';
+
+  // Data dimuat satu kali dan digunakan kembali.
+  static Future<List<dynamic>>? _provincesFuture;
+
+  Future<List<dynamic>> _loadProvinces() {
+    return _provincesFuture ??= _readProvinces();
+  }
+
+  Future<List<dynamic>> _readProvinces() async {
+    try {
+      final jsonString =
+          await rootBundle.loadString(_assetPath);
+
+      final decoded = jsonDecode(jsonString);
+
+      if (decoded is! Map<String, dynamic> ||
+          decoded['provinces'] is! List) {
+        throw const FormatException(
+          'Format JSON wilayah tidak sesuai.',
+        );
+      }
+
+      return decoded['provinces'] as List<dynamic>;
+    } catch (_) {
+      // Jika pemuatan gagal, izinkan percobaan ulang.
+      _provincesFuture = null;
+      rethrow;
+    }
+  }
 
   Future<Adm4Data> getAdm4FromLocation({
     required String village,
@@ -29,315 +58,130 @@ class Adm4Service {
     required String city,
     required String province,
   }) async {
-    print('================================');
-    print('MENCARI ADM4 OTOMATIS');
-    print('DESA      : $village');
-    print('KECAMATAN : $district');
-    print('KOTA      : $city');
-    print('PROVINSI  : $province');
-    print('================================');
+    final provinces = await _loadProvinces();
 
-    // =======================================================
-    // 1. CARI KODE PROVINSI
-    // =======================================================
-
-    final provinceCode =
-        await findProvinceCode(
+    final provinceData = _findByName(
+      provinces,
       province,
+      prefixesToRemove: const [],
     );
 
-    print(
-      'KODE PROVINSI: $provinceCode',
-    );
-
-    // =======================================================
-    // 2. CARI KODE KOTA/KABUPATEN
-    // =======================================================
-
-    final cityCode =
-        await findCityCode(
-      provinceCode: provinceCode,
-      cityName: city,
-    );
-
-    print(
-      'KODE KOTA/KABUPATEN: $cityCode',
-    );
-
-    // =======================================================
-    // 3. CARI KODE KECAMATAN
-    // =======================================================
-
-    final districtCode =
-        await findDistrictCode(
-      cityCode: cityCode,
-      districtName: district,
-    );
-
-    print(
-      'KODE KECAMATAN: $districtCode',
-    );
-
-    // =======================================================
-    // 4. CARI KODE DESA/KELURAHAN
-    // =======================================================
-
-    final villageData =
-        await findVillageCode(
-      districtCode: districtCode,
-      villageName: village,
-    );
-
-    print('================================');
-    print('ADM4 BERHASIL DITEMUKAN');
-    print('KODE ADM4: ${villageData['code']}');
-    print('NAMA DESA: ${villageData['name']}');
-    print('================================');
-
-    return Adm4Data(
-      adm4:
-          villageData['code'].toString(),
-
-      village:
-          villageData['name'].toString(),
-
-      district:
-          district,
-
-      city:
-          city,
-
-      province:
-          province,
-    );
-  }
-
-  // =========================================================
-  // PROVINSI
-  // =========================================================
-
-  Future<String> findProvinceCode(
-    String provinceName,
-  ) async {
-    final url = Uri.parse(
-      'https://wilayah.id/api/provinces.json',
-    );
-
-    final response =
-        await http.get(url);
-
-    if (response.statusCode != 200) {
+    if (provinceData == null) {
       throw Exception(
-        'Gagal mengambil data provinsi',
+        'Provinsi tidak ditemukan: $province',
       );
     }
 
-    final data =
-        jsonDecode(response.body);
+    final regencies =
+        provinceData['regencies'] as List<dynamic>? ?? [];
 
-    final provinces =
-        data['data'] as List;
-
-    final target =
-        normalize(provinceName);
-
-    for (final province in provinces) {
-      final name =
-          normalize(
-        province['name'].toString(),
-      );
-
-      if (name == target) {
-        return province['code'].toString();
-      }
-    }
-
-    // Alias nama provinsi
-    if (target == 'dki jakarta' ||
-        target == 'jakarta') {
-      return '31';
-    }
-
-    throw Exception(
-      'Provinsi tidak ditemukan: '
-      '$provinceName',
-    );
-  }
-
-  // =========================================================
-  // KOTA / KABUPATEN
-  // =========================================================
-
-  Future<String> findCityCode({
-    required String provinceCode,
-    required String cityName,
-  }) async {
-    final url = Uri.parse(
-      'https://wilayah.id/api/regencies/'
-      '$provinceCode.json',
+    final cityData = _findByName(
+      regencies,
+      city,
     );
 
-    final response =
-        await http.get(url);
-
-    if (response.statusCode != 200) {
+    if (cityData == null) {
       throw Exception(
-        'Gagal mengambil data kota/kabupaten',
+        'Kota/kabupaten tidak ditemukan: $city',
       );
     }
-
-    final data =
-        jsonDecode(response.body);
-
-    final cities =
-        data['data'] as List;
-
-    final target =
-        normalize(cityName);
-
-    for (final city in cities) {
-      final name =
-          normalize(
-        city['name'].toString(),
-      );
-
-      if (name == target ||
-          name.contains(target) ||
-          target.contains(name)) {
-        return city['code'].toString();
-      }
-    }
-
-    throw Exception(
-      'Kota/kabupaten tidak ditemukan: '
-      '$cityName',
-    );
-  }
-
-  // =========================================================
-  // KECAMATAN
-  // =========================================================
-
-  Future<String> findDistrictCode({
-    required String cityCode,
-    required String districtName,
-  }) async {
-    final url = Uri.parse(
-      'https://wilayah.id/api/districts/'
-      '$cityCode.json',
-    );
-
-    final response =
-        await http.get(url);
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Gagal mengambil data kecamatan',
-      );
-    }
-
-    final data =
-        jsonDecode(response.body);
 
     final districts =
-        data['data'] as List;
+        cityData['districts'] as List<dynamic>? ?? [];
 
-    final target =
-        normalize(districtName);
-
-    for (final district in districts) {
-      final name =
-          normalize(
-        district['name'].toString(),
-      );
-
-      if (name == target ||
-          name.contains(target) ||
-          target.contains(name)) {
-        return district['code'].toString();
-      }
-    }
-
-    throw Exception(
-      'Kecamatan tidak ditemukan: '
-      '$districtName',
-    );
-  }
-
-  // =========================================================
-  // DESA / KELURAHAN → ADM4
-  // =========================================================
-
-  Future<Map<String, dynamic>> findVillageCode({
-    required String districtCode,
-    required String villageName,
-  }) async {
-    final url = Uri.parse(
-      'https://wilayah.id/api/villages/'
-      '$districtCode.json',
+    final districtData = _findByName(
+      districts,
+      district,
     );
 
-    final response =
-        await http.get(url);
-
-    if (response.statusCode != 200) {
+    if (districtData == null) {
       throw Exception(
-        'Gagal mengambil data desa/kelurahan',
+        'Kecamatan tidak ditemukan: $district',
       );
     }
-
-    final data =
-        jsonDecode(response.body);
 
     final villages =
-        data['data'] as List;
+        districtData['villages'] as List<dynamic>? ?? [];
 
-    final target =
-        normalize(villageName);
+    final villageData = _findByName(
+      villages,
+      village,
+    );
 
-    for (final village in villages) {
-      final name =
-          normalize(
-        village['name'].toString(),
+    if (villageData == null) {
+      throw Exception(
+        'Desa/kelurahan tidak ditemukan: $village',
       );
-
-      if (name == target ||
-          name.contains(target) ||
-          target.contains(name)) {
-        return {
-          'code': village['code'],
-          'name': village['name'],
-        };
-      }
     }
 
-    throw Exception(
-      'Desa/kelurahan tidak ditemukan: '
-      '$villageName',
+    return Adm4Data(
+      adm4: villageData['code'].toString(),
+      village: villageData['name'].toString(),
+      district: districtData['name'].toString(),
+      city: cityData['name'].toString(),
+      province: provinceData['name'].toString(),
     );
   }
 
-  // =========================================================
-  // NORMALISASI NAMA
-  // =========================================================
+  Map<String, dynamic>? _findByName(
+    List<dynamic> items,
+    String input, {
+    List<String> prefixesToRemove = const [
+      'kabupaten ',
+      'kota administrasi ',
+      'kota ',
+    ],
+  }) {
+    final target = _normalize(
+      input,
+      prefixesToRemove,
+    );
 
-  String normalize(
+    // Prioritaskan kecocokan nama yang tepat.
+    for (final item in items) {
+      if (item is! Map<String, dynamic>) continue;
+
+      final name = item['name']?.toString() ?? '';
+
+      if (_normalize(name, prefixesToRemove) == target) {
+        return item;
+      }
+    }
+
+    // Fallback untuk variasi nama yang tidak terlalu berbeda.
+    for (final item in items) {
+      if (item is! Map<String, dynamic>) continue;
+
+      final name = item['name']?.toString() ?? '';
+      final normalizedName =
+          _normalize(name, prefixesToRemove);
+
+      if (target.isNotEmpty &&
+          (normalizedName.contains(target) ||
+              target.contains(normalizedName))) {
+        return item;
+      }
+    }
+
+    return null;
+  }
+
+  String _normalize(
     String value,
+    List<String> prefixesToRemove,
   ) {
-    return value
+    var result = value
         .toLowerCase()
         .trim()
-        .replaceAll(
-          'kota administrasi ',
-          '',
-        )
-        .replaceAll(
-          'kabupaten ',
-          '',
-        )
-        .replaceAll(
-          'kota ',
-          '',
-        );
+        .replaceAll(RegExp(r'\s+'), ' ');
+
+    for (final prefix in prefixesToRemove) {
+      if (result.startsWith(prefix)) {
+        result = result.substring(prefix.length).trim();
+        break;
+      }
+    }
+
+    return result;
   }
 }
