@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../services/api_service.dart';
 import '../login_screen/login_screen.dart';
+import '../../consts/colors.dart';
+import '../../widgets/gradient_header.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -28,6 +30,7 @@ class _ProfileScreenState
 
     userFuture =
         apiService.getCurrentUser();
+    
   }
 
   // =====================================================
@@ -114,145 +117,135 @@ class _ProfileScreenState
                       : '?';
 
           return SingleChildScrollView(
-            padding:
-                const EdgeInsets.all(
-              24,
-            ),
+            padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                const SizedBox(
-                  height: 20,
+                // ---------- HEADER ----------
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: AppColors.violetGradient,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.violetGradient.first
+                            .withValues(alpha: 0.30),
+                        blurRadius: 22,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.35),
+                        ),
+                        child: CircleAvatar(
+                          radius: 46,
+                          backgroundColor: Colors.white,
+                          child: Text(
+                            initial,
+                            style: TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.violetGradient.first,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        displayedName,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '@${user.username}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
-                // =============================================
-                // FOTO PROFIL
-                // =============================================
+                const SizedBox(height: 18),
 
-                CircleAvatar(
-                  radius: 48,
-                  child: Text(
-                    initial,
-                    style:
-                        const TextStyle(
-                      fontSize: 36,
-                      fontWeight:
-                          FontWeight.bold,
+                // ---------- INFO AKUN ----------
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      children: [
+                        _ProfileItem(
+                          icon: Icons.person_outline,
+                          color: AppColors.primary,
+                          title: 'Username',
+                          value: user.username.isNotEmpty ? user.username : '-',
+                        ),
+                        const Divider(height: 1),
+                        _ProfileItem(
+                          icon: Icons.email_outlined,
+                          color: AppColors.primary,
+                          title: 'Email',
+                          value: user.email.isNotEmpty ? user.email : '-',
+                        ),
+                        const Divider(height: 1),
+                        _ProfileItem(
+                          icon: Icons.badge_outlined,
+                          color: const Color(0xFF8E7CFF),
+                          title: 'Nama',
+                          value: displayedName,
+                        ),
+                      ],
                     ),
                   ),
                 ),
 
-                const SizedBox(
-                  height: 16,
-                ),
+                const SizedBox(height: 24),
 
-                // =============================================
-                // NAMA UTAMA
-                // =============================================
-
-                Text(
-                  displayedName,
-                  textAlign:
-                      TextAlign.center,
-                  style:
-                      const TextStyle(
-                    fontSize: 24,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 4,
-                ),
-
-                // =============================================
-                // USERNAME
-                // =============================================
-
-                Text(
-                  '@${user.username}',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.grey,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 32,
-                ),
-
-                // =============================================
-                // USERNAME
-                // =============================================
-
-                _ProfileItem(
-                  icon:
-                      Icons.person_outline,
-                  title:
-                      'Username',
-                  value:
-                      user.username.isNotEmpty
-                          ? user.username
-                          : '-',
-                ),
-
-                const Divider(),
-
-                // =============================================
-                // EMAIL
-                // =============================================
-
-                _ProfileItem(
-                  icon:
-                      Icons.email_outlined,
-                  title:
-                      'Email',
-                  value:
-                      user.email.isNotEmpty
-                          ? user.email
-                          : '-',
-                ),
-
-                const Divider(),
-
-                // =============================================
-                // NAMA
-                // =============================================
-
-                _ProfileItem(
-                  icon:
-                      Icons.badge_outlined,
-                  title:
-                      'Nama',
-                  value:
-                      displayedName,
-                ),
-
-                const SizedBox(
-                  height: 40,
-                ),
-
-                // =============================================
-                // TOMBOL LOGOUT
-                // =============================================
-
+                // ---------- LOGOUT ----------
                 SizedBox(
-                  width:
-                      double.infinity,
-                  height:
-                      50,
-                  child:
-                      OutlinedButton.icon(
-                    onPressed:
-                        logout,
-                    icon:
-                        const Icon(
-                      Icons.logout,
-                    ),
-                    label:
-                        const Text(
-                      'LOGOUT',
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: logout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('LOGOUT'),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFFFFEBEE),
+                      foregroundColor: const Color(0xFFD32F2F),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                   ),
                 ),
@@ -269,55 +262,34 @@ class _ProfileScreenState
 // WIDGET ITEM PROFIL
 // =====================================================
 
-class _ProfileItem
-    extends StatelessWidget {
+class _ProfileItem extends StatelessWidget {
   final IconData icon;
-
+  final Color color;
   final String title;
-
   final String value;
 
   const _ProfileItem({
     required this.icon,
+    required this.color,
     required this.title,
     required this.value,
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return ListTile(
-      contentPadding:
-          EdgeInsets.zero,
-
-      leading:
-          CircleAvatar(
-        child:
-            Icon(icon),
-      ),
-
-      title:
-          Text(
+      contentPadding: EdgeInsets.zero,
+      leading: IconBadge(icon: icon, color: color),
+      title: Text(
         title,
-        style:
-            const TextStyle(
-          color:
-              Colors.grey,
-          fontSize:
-              13,
-        ),
+        style: const TextStyle(color: AppColors.inkSoft, fontSize: 12),
       ),
-
-      subtitle:
-          Text(
+      subtitle: Text(
         value,
-        style:
-            const TextStyle(
-          fontSize:
-              16,
-          fontWeight:
-              FontWeight.w600,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
         ),
       ),
     );

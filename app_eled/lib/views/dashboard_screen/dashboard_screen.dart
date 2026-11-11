@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../location_screen/location_screen.dart';
 import '../../services/api_service.dart';
-import '../../models/user_model.dart';
 import '../../services/location_storage_service.dart';
 import '../../services/bmkg_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../consts/colors.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -367,6 +367,7 @@ class _DashboardScreenState
     }
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
@@ -395,19 +396,13 @@ class _DashboardScreenState
                   height: 24,
                 ),
 
-                _buildLocationCard(),
-
-                const SizedBox(
-                  height: 20,
-                ),
-
                 _buildCurrentWeatherCard(),
 
                 const SizedBox(
                   height: 24,
                 ),
 
-                _buildForecastSection(),
+                _buildModernForecastSection(),
               ],
             ),
           ),
@@ -481,166 +476,20 @@ class _DashboardScreenState
   }
 
   // =====================================================
-  // LOCATION CARD
-  // =====================================================
-  Widget _buildLocationCard() {
-    final hasLocation =
-        selectedAdm4.isNotEmpty;
-
-    return Card(
-      elevation: 2,
-
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          20,
-        ),
-      ),
-
-      child: Padding(
-        padding:
-            const EdgeInsets.all(18),
-
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-
-          children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.location_on,
-                  size: 22,
-                ),
-
-                SizedBox(
-                  width: 8,
-                ),
-
-                Text(
-                  'Lokasi Anda',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            if (!hasLocation)
-              const Text(
-                'Belum ada lokasi yang dipilih.',
-              )
-            else
-              Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-
-                children: [
-                  Text(
-                    selectedVillage,
-
-                    style:
-                        const TextStyle(
-                      fontSize: 20,
-
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 4,
-                  ),
-
-                  Text(
-                    '$selectedDistrict, '
-                    '$selectedRegency',
-
-                    style:
-                        TextStyle(
-                      color:
-                          Colors.grey.shade700,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 4,
-                  ),
-
-                  Text(
-                    selectedProvince,
-
-                    style:
-                        TextStyle(
-                      color:
-                          Colors.grey.shade600,
-
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            SizedBox(
-              width:
-                  double.infinity,
-
-              child:
-                  OutlinedButton.icon(
-                onPressed:
-                    _updateLocation,
-
-                icon: const Icon(
-                  Icons.location_on_outlined,
-                ),
-
-                label: const Text(
-                  'Ubah Lokasi',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // =====================================================
   // CUACA SAAT INI
   // =====================================================
 
   Widget _buildCurrentWeatherCard() {
     if (isLoadingWeather) {
-      return Card(
-        elevation: 2,
-
-        shape:
-            RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(
-            20,
-          ),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF4FF),
+          borderRadius: BorderRadius.circular(24),
         ),
-
-        child: const Padding(
-          padding:
-              EdgeInsets.all(40),
-
-          child: Center(
-            child:
-                CircularProgressIndicator(),
-          ),
+        child: const Center(
+          child: CircularProgressIndicator(),
         ),
       );
     }
@@ -648,75 +497,44 @@ class _DashboardScreenState
     if (weatherData == null) {
       return Card(
         elevation: 2,
-
-        shape:
-            RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(
-            20,
-          ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
-
         child: Padding(
-          padding:
-              const EdgeInsets.all(20),
-
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               const Icon(
                 Icons.cloud_off_outlined,
-
                 size: 70,
               ),
 
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
 
               const Text(
                 'Data cuaca belum tersedia',
-
-                style:
-                    TextStyle(
+                style: TextStyle(
                   fontSize: 18,
-
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
-              if (weatherError
-                  .isNotEmpty) ...[
-                const SizedBox(
-                  height: 10,
-                ),
-
+              if (weatherError.isNotEmpty) ...[
+                const SizedBox(height: 10),
                 Text(
                   weatherError,
-
-                  textAlign:
-                      TextAlign.center,
-
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.red.shade700,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.red.shade700,
                   ),
                 ),
               ],
 
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
 
               ElevatedButton.icon(
-                onPressed:
-                    _loadWeather,
-
-                icon: const Icon(
-                  Icons.refresh,
-                ),
-
+                onPressed: _loadWeather,
+                icon: const Icon(Icons.refresh),
                 label: const Text(
                   'Muat Ulang Cuaca',
                 ),
@@ -727,15 +545,12 @@ class _DashboardScreenState
       );
     }
 
-    final forecasts =
-        _getForecasts();
+    final forecasts = _getForecasts();
 
     if (forecasts.isEmpty) {
       return const Card(
         child: Padding(
-          padding:
-              EdgeInsets.all(20),
-
+          padding: EdgeInsets.all(20),
           child: Text(
             'Data prakiraan cuaca kosong.',
           ),
@@ -743,155 +558,169 @@ class _DashboardScreenState
       );
     }
 
-    final current =
-        forecasts.first;
+    final current = forecasts.first;
 
     final temperature =
-        current['t']?.toString() ??
-            '--';
+        current['t']?.toString() ?? '--';
 
     final weather =
         current['weather_desc'] ??
             'Tidak tersedia';
 
     final humidity =
-        current['hu']?.toString() ??
-            '--';
+        current['hu']?.toString() ?? '--';
 
     final wind =
-        current['ws']?.toString() ??
-            '--';
+        current['ws']?.toString() ?? '--';
+    
+        final cloud = current['tcc']?.toString() ?? '--';
+    final gradient = AppColors.weatherGradient(weather);
 
-    final visibility =
-        current['vs_text'] ??
-            '--';
-
-    return Card(
-      elevation: 2,
-
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          20,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: gradient,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: gradient.first.withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
-
-      child: Padding(
-        padding:
-            const EdgeInsets.all(20),
-
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-
-          children: [
-            const Text(
-              'Cuaca Saat Ini',
-
-              style:
-                  TextStyle(
-                fontSize: 20,
-
-                fontWeight:
-                    FontWeight.bold,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined,
+                  color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '$selectedVillage, $selectedRegency',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _updateLocation,
+                tooltip: 'Ubah lokasi',
+                icon: const Icon(Icons.edit_location_alt_outlined,
+                    color: Colors.white, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Icon(
+            _getWeatherIconData(weather),
+            size: 84,
+            color: weather.toLowerCase().contains('cerah')
+                ? Colors.amber.shade300
+                : Colors.white,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$temperature°',
+            style: const TextStyle(
+              fontSize: 88,
+              fontWeight: FontWeight.w200,
+              color: Colors.white,
+              height: 1.1,
+            ),
+          ),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              weather,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
               ),
             ),
-
-            const SizedBox(
-              height: 20,
+          ),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(20),
             ),
-
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment
-                      .spaceBetween,
-
+            child: Row(
               children: [
-                Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-
-                  children: [
-                    Text(
-                      '$temperature°C',
-
-                      style:
-                          const TextStyle(
-                        fontSize: 48,
-
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-
-                    Text(
-                      weather,
-
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.grey.shade600,
-
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: _buildCurrentWeatherInfo(
+                    icon: Icons.water_drop_outlined,
+                    label: 'Kelembapan',
+                    value: '$humidity%',
+                    iconColor: Colors.white,
+                  ),
                 ),
-
-                _getWeatherIcon(
-                  weather,
-
-                  size: 70,
+                Expanded(
+                  child: _buildCurrentWeatherInfo(
+                    icon: Icons.air,
+                    label: 'Angin',
+                    value: '$wind km/j',
+                    iconColor: Colors.white,
+                  ),
+                ),
+                Expanded(
+                  child: _buildCurrentWeatherInfo(
+                    icon: Icons.cloud_outlined,
+                    label: 'Awan',
+                    value: '$cloud%',
+                    iconColor: Colors.white,
+                  ),
                 ),
               ],
             ),
-
-            const SizedBox(
-              height: 24,
-            ),
-
-            const Divider(),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment
-                      .spaceAround,
-
-              children: [
-                _buildWeatherInfo(
-                  Icons.water_drop_outlined,
-
-                  'Kelembapan',
-
-                  '$humidity%',
-                ),
-
-                _buildWeatherInfo(
-                  Icons.air,
-
-                  'Angin',
-
-                  '$wind km/j',
-                ),
-
-                _buildWeatherInfo(
-                  Icons.visibility_outlined,
-
-                  'Jarak Pandang',
-
-                  visibility,
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildCurrentWeatherInfo({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color iconColor,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, size: 22, color: iconColor),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 
@@ -935,354 +764,336 @@ class _DashboardScreenState
   // PRAKIRAAN CUACA
   // =====================================================
 
-  Widget _buildForecastSection() {
-    final forecasts =
-        _getForecasts();
+  Widget _buildModernForecastSection() {
+    final forecasts = _getForecasts();
 
-    final upcoming =
-        forecasts.length > 1
-            ? forecasts.sublist(1)
-            : [];
+    final upcoming = forecasts.length > 1
+        ? forecasts.sublist(1)
+        : <dynamic>[];
+
+    final size = MediaQuery.sizeOf(context);
+    final itemWidth = (size.width - 40) / 4; // 4 item per layar (padding 20+20)
+    final listHeight = (size.height * 0.24).clamp(180.0, 260.0).toDouble();
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment:
-              MainAxisAlignment
-                  .spaceBetween,
-
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Prakiraan Cuaca',
-
-              style:
-                  TextStyle(
-                fontSize: 20,
-
-                fontWeight:
-                    FontWeight.bold,
+            const Flexible(
+              child: Text(
+                'Prakiraan Cuaca',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ink,
+                ),
               ),
             ),
-
             TextButton(
-              onPressed:
-                  upcoming.isEmpty
-                      ? null
-                      : () {
-                          _showFullForecast(
-                            forecasts,
-                          );
-                        },
-
-              child: const Text(
-                'Lihat Selengkapnya',
+              onPressed: upcoming.isEmpty
+                  ? null
+                  : () => _showFullForecast(forecasts),
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                shape: const StadiumBorder(),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Lihat Selengkapnya',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 2),
+                  Icon(Icons.chevron_right, size: 18),
+                ],
               ),
             ),
           ],
         ),
 
-        const SizedBox(
-          height: 12,
-        ),
+        const SizedBox(height: 14),
 
-        if (upcoming.isEmpty)
-          const Text(
-            'Belum ada data prakiraan.',
-          )
-        else
-          SizedBox(
-            height: 150,
-
-            child: ListView.builder(
-              scrollDirection:
-                  Axis.horizontal,
-
-              itemCount:
-                  upcoming.length > 8
-                      ? 8
-                      : upcoming.length,
-
-              itemBuilder:
-                  (
-                context,
-                index,
-              ) {
-                final forecast =
-                    upcoming[index];
-
-                final weather =
-                    forecast[
-                            'weather_desc'] ??
-                        '-';
-
-                final temperature =
-                    forecast['t']
-                            ?.toString() ??
-                        '--';
-
-                final dateTime =
-                    forecast[
-                            'local_datetime'] ??
-                        '';
-
-                return _buildForecastCard(
-                  dateTime,
-
-                  '$temperature°C',
-
-                  _getWeatherIconData(
-                    weather,
+        upcoming.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'Belum ada data prakiraan.',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF5C6B7A)),
+                ),
+              )
+            : SizedBox(
+                height: listHeight,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  primary: false,
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
                   ),
-                );
-              },
-            ),
-          ),
+                  padding: EdgeInsets.zero,
+                  itemExtent: itemWidth,
+                  itemCount: upcoming.length > 8 ? 8 : upcoming.length,
+                  itemBuilder: (context, index) {
+                    final forecast = upcoming[index];
+                    final temperature = forecast['t']?.toString() ?? '--';
+                    final weather = forecast['weather_desc'] ?? '-';
+                    final dateTime = forecast['local_datetime'] ?? '';
+
+                    return _buildForecastStripItem(
+                      time: _formatHourOnly(dateTime),
+                      temp: '$temperature°',
+                      weather: weather,
+                    );
+                  },
+                ),
+              ),
       ],
     );
+  }
+
+  Widget _buildForecastStripItem({
+    required String time,
+    required String temp,
+    required String weather,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          time,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: AppColors.inkSoft,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _getColoredWeatherIcon(weather, size: 28),
+        const SizedBox(height: 10),
+        Text(
+          temp,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.ink,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _getColoredWeatherIcon(
+    String weather, {
+    double size = 32,
+  }) {
+    final text = weather.toLowerCase();
+    
+    IconData icon;
+    Color color;
+
+    if (text.contains('petir') || text.contains('badai')) {
+      icon = Icons.thunderstorm;
+      color = Colors.deepPurple;
+    } else if (text.contains('hujan')) {
+      icon = Icons.umbrella;
+      color = Colors.blue;
+    } else if (text.contains('cerah')) {
+      icon = Icons.wb_sunny;
+      color = Colors.amber;
+    } else if (text.contains('berawan')) {
+      icon = Icons.cloud;
+      color = const Color.fromARGB(255, 55, 115, 255);
+    } else {
+      icon = Icons.cloud_outlined;
+      color = const Color.fromARGB(255, 55, 115, 255);
+    }
+
+    return Icon(
+      icon,
+      size: size,
+      color: color,
+    );
+  }
+
+  String _formatHourOnly(String dateTime) {
+    if (dateTime.isEmpty) return '--';
+
+    if (dateTime.contains(' ')) {
+      final timePart = dateTime.split(' ').last;
+      return timePart.length >= 5 ? timePart.substring(0, 5) : timePart;
+    }
+
+    return dateTime.length >= 5 ? dateTime.substring(0, 5) : dateTime;
   }
 
   // =====================================================
   // FULL FORECAST
   // =====================================================
 
-  void _showFullForecast(
-    List<dynamic> forecasts,
-  ) {
+  void _showFullForecast(List<dynamic> forecasts) {
     showModalBottomSheet(
       context: context,
-
-      isScrollControlled:
-          true,
-
-      builder:
-          (context) {
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
         return SafeArea(
           child: SizedBox(
-            height:
-                MediaQuery.of(
-                  context,
-                ).size.height *
-                    0.8,
-
-            child: ListView.builder(
-              padding:
-                  const EdgeInsets.all(
-                20,
-              ),
-
-              itemCount:
-                  forecasts.length,
-
-              itemBuilder:
-                  (
-                context,
-                index,
-              ) {
-                final forecast =
-                    forecasts[index];
-
-                final weather =
-                    forecast[
-                            'weather_desc'] ??
-                        '-';
-
-                final temperature =
-                    forecast['t']
-                            ?.toString() ??
-                        '--';
-
-                final humidity =
-                    forecast['hu']
-                            ?.toString() ??
-                        '--';
-
-                final dateTime =
-                    forecast[
-                            'local_datetime'] ??
-                        '-';
-
-                return Card(
-                  child: ListTile(
-                    leading:
-                        _getWeatherIcon(
-                      weather,
-
-                      size: 36,
-                    ),
-
-                    title: Text(
-                      '$temperature°C - '
-                      '$weather',
-                    ),
-
-                    subtitle: Text(
-                      '$dateTime\n'
-                      'Kelembapan: '
-                      '$humidity%',
+            height: MediaQuery.of(context).size.height * 0.8,
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD5DCE5),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(22, 16, 22, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Prakiraan Cuaca',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.ink,
+                      ),
                     ),
                   ),
-                );
-              },
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
+                    itemCount: forecasts.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final forecast = forecasts[index];
+                      final weather =
+                          (forecast['weather_desc'] ?? '-').toString();
+                      final temperature = forecast['t']?.toString() ?? '--';
+                      final humidity = forecast['hu']?.toString() ?? '--';
+                      final raw =
+                          (forecast['local_datetime'] ?? '-').toString();
+                      final dateTime =
+                          raw.length >= 16 ? raw.substring(0, 16) : raw;
+                      final tint = AppColors.weatherGradient(weather).first;
+
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE8EDF3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: tint.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Center(
+                                child: _getColoredWeatherIcon(weather, size: 30),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    weather,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    dateTime,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.inkSoft,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.water_drop_outlined,
+                                          size: 13,
+                                          color: AppColors.primary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Kelembapan $humidity%',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '$temperature°C',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
     );
   }
-
-  // =====================================================
-  // FORECAST CARD
-  // =====================================================
-
-  Widget _buildForecastCard(
-    String time,
-
-    String temperature,
-
-    IconData icon,
-  ) {
-    String displayTime =
-        time;
-
-    if (time.contains(' ')) {
-      displayTime =
-          time.split(' ').last;
-    }
-
-    return Container(
-      width: 125,
-
-      margin:
-          const EdgeInsets.only(
-        right: 12,
-      ),
-
-      child: Card(
-        elevation: 2,
-
-        child: Padding(
-          padding:
-              const EdgeInsets.all(
-            12,
-          ),
-
-          child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment
-                    .center,
-
-            children: [
-              Text(
-                displayTime,
-
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(
-                height: 12,
-              ),
-
-              Icon(
-                icon,
-
-                size: 36,
-              ),
-
-              const SizedBox(
-                height: 8,
-              ),
-
-              Text(
-                temperature,
-
-                style:
-                    const TextStyle(
-                  fontSize: 18,
-
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // =====================================================
-  // WEATHER INFO
-  // =====================================================
-
-  Widget _buildWeatherInfo(
-    IconData icon,
-
-    String label,
-
-    String value,
-  ) {
-    return Column(
-      children: [
-        Icon(
-          icon,
-
-          size: 24,
-        ),
-
-        const SizedBox(
-          height: 6,
-        ),
-
-        Text(
-          label,
-
-          style:
-              const TextStyle(
-            fontSize: 11,
-          ),
-        ),
-
-        const SizedBox(
-          height: 4,
-        ),
-
-        Text(
-          value,
-
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
+  
   // =====================================================
   // ICON CUACA
   // =====================================================
-
-  Widget _getWeatherIcon(
-    String weather, {
-
-    double size = 50,
-  }) {
-    return Icon(
-      _getWeatherIconData(
-        weather,
-      ),
-
-      size: size,
-    );
-  }
 
   IconData _getWeatherIconData(
     String weather,

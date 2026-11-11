@@ -19,6 +19,8 @@ import 'views/wifi_screen/wifi_screen.dart';
 
 import 'views/notification_screen/notification_screen.dart';
 
+import 'package:google_fonts/google_fonts.dart';
+
 const String weatherAlertTaskName = 'weatherAlertCheck';
 
 @pragma('vm:entry-point')
@@ -93,6 +95,7 @@ class MyApp extends StatelessWidget {
 
       theme: ThemeData(
         useMaterial3: true,
+        textTheme: GoogleFonts.poppinsTextTheme(),
 
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
@@ -101,35 +104,38 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor:
             const Color(0xFFF8FAFC),
 
-        appBarTheme:
-            const AppBarTheme(
+        appBarTheme: const AppBarTheme(
           centerTitle: false,
           elevation: 0,
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Color(0xFF1E2A3A),
         ),
-
-        inputDecorationTheme:
-            const InputDecorationTheme(
-          border:
-              OutlineInputBorder(),
-
-          enabledBorder:
-              OutlineInputBorder(),
-
-          focusedBorder:
-              OutlineInputBorder(
-            borderSide:
-                BorderSide(
-              width: 2,
-            ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFFF5F7FA),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.5),
           ),
         ),
-
-        cardTheme:
-            const CardThemeData(
-          elevation: 2,
-
-          margin:
-              EdgeInsets.zero,
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFE8EDF3)),
+          ),
         ),
       ),
 
