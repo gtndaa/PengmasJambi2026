@@ -7,6 +7,7 @@ const { getUsers, register, login } = require('../controller/Users');
 const { authenticateJWT } = require('../middleware/tokenVerification');
 const { setDeviceConfig, getDeviceConfig } = require('../controller/deviceConfigController');
 const { getLatestSensorData, tambahSensorData, getSensorRange } = require('../controller/SensorController');
+const { tambahDeviceLog, getDeviceLog } = require('../controller/deviceLogController');
 
 // Home Route
 router.get('/', async (req, res) => {
@@ -28,5 +29,8 @@ router.get('/sensordata/history', getSensorRange);
 
 router.post('/config', setDeviceConfig);
 router.get('/config', getDeviceConfig);
+
+router.post('/devicelog', tambahDeviceLog);
+router.get('/devicelog', getDeviceLog);
 
 module.exports = { router };
