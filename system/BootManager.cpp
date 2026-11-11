@@ -20,6 +20,15 @@ void BootManager::init() {
         LOG_WARN("Reset reason=BROWNOUT. Sistem butuh NTP resync");
         RTCManager::markNeedResync();
     }
+
+/**/ // [RTC-RESYNC-CAUSE]
+    if (resetReason != ESP_RST_DEEPSLEEP && resetReason != ESP_RST_BROWNOUT) {
+        LOG_WARN("Reset reason=%d (bukan deep-sleep-wake, bukan brownout) -- "
+                  "tetap minta NTP resync untuk jaga-jaga RTC ikut tidak sinkron",
+                  (int)resetReason);
+        RTCManager::markNeedResync();
+    }
+/**/
 }
 
 uint32_t BootManager::getBootCount() {

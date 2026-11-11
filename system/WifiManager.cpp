@@ -63,13 +63,11 @@ void WifiManager::disconnect() {
 
 /**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
 #if __has_include("esp_eap_client.h")
-  #include "esp_eap_client.h"   // ESP32 Arduino core 3.x (IDF 5.x)
+  #include "esp_eap_client.h"
 #else
-  #include "esp_wpa2.h"         // ESP32 Arduino core 2.x (IDF 4.x)
+  #include "esp_wpa2.h"
 #endif
 
-// Matikan mode enterprise di WiFi stack supaya WiFi.begin(ssid, pass)
-// biasa berikutnya tidak ikut "terbawa" mode enterprise.
 static void wpa2EntDisable() {
 #if __has_include("esp_eap_client.h")
     esp_wifi_sta_enterprise_disable();
@@ -78,7 +76,6 @@ static void wpa2EntDisable() {
 #endif
 }
 
-// ---- Debug helper: alasan disconnect terakhir + nama status WiFi ----
 static volatile int s_lastDisconnectReason = 0;
 static bool s_entEventRegistered = false;
 
@@ -102,7 +99,6 @@ static const char* wifiStatusName(wl_status_t s) {
     }
 }
 
-// Petunjuk untuk reason code yang paling sering muncul di enterprise
 static const char* disconnectReasonHint(int r) {
     switch (r) {
         case 0:   return "belum ada event disconnect";
@@ -127,7 +123,7 @@ bool WifiManager::connectEnterprise(unsigned long timeoutMs) {
     }
     s_lastDisconnectReason = 0;
     LOG_DEBUG("[ENT] identity=%s username=%s timeout=%lu ms",
-              WIFI_ENT_IDENTITY, WIFI_ENT_USERNAME, timeoutMs);   // password sengaja tidak dicetak
+              WIFI_ENT_IDENTITY, WIFI_ENT_USERNAME, timeoutMs);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_ENT_SSID, WPA2_AUTH_PEAP,
                WIFI_ENT_IDENTITY, WIFI_ENT_USERNAME, WIFI_ENT_PASSWORD);
@@ -156,22 +152,17 @@ bool WifiManager::connectEnterprise(unsigned long timeoutMs) {
 bool WifiManager::connectWithFallbackToEnterprise(const WifiCredentials& newCreds,
                                                    unsigned long timeoutMs) {
     LOG_INFO("Mencoba ganti WiFi (dari Enterprise) ke SSID baru: %s", newCreds.ssid.c_str());
-
     disconnect();
     delay(100);
-    wpa2EntDisable();   // keluar dari mode enterprise sebelum konek personal
-
+    wpa2EntDisable();
     if (connect(newCreds.ssid.c_str(), newCreds.password.c_str(), timeoutMs)) {
         LOG_INFO("Berhasil terhubung ke SSID baru: %s", newCreds.ssid.c_str());
         return true;
     }
-
     LOG_WARN("Gagal terhubung ke SSID baru (%s), kembali ke WPA2-Enterprise: %s",
               newCreds.ssid.c_str(), WIFI_ENT_SSID);
-
     disconnect();
     delay(100);
-
     if (connectEnterprise(WIFI_ENT_TIMEOUT_MS)) {
         LOG_INFO("Berhasil kembali terhubung ke Enterprise: %s", WIFI_ENT_SSID);
     } else {
@@ -179,4 +170,3 @@ bool WifiManager::connectWithFallbackToEnterprise(const WifiCredentials& newCred
     }
     return false;
 }
-/**/

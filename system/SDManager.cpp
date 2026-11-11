@@ -1,4 +1,5 @@
 #include "headers.h"
+#include <esp_task_wdt.h>
 #include <SPI.h>
 
 bool SDManager::begin() {
@@ -170,6 +171,9 @@ void SDManager::queueFlush(CloudAPI& api, uint16_t& outSent, uint16_t& outRemain
         }
 
         yield(); // beri jatah CPU ke task WiFi/lwIP tiap record
+/**/ // [WATCHDOG] task watchdog -- paksa esp_restart() kalau satu siklus hang
+        esp_task_wdt_reset(); // backlog bisa panjang (s/d 20 record x ~16s HTTP timeout) -- pet tiap record supaya tidak kena watchdog padahal masih maju, bukan hang
+/**/
     }
 
     outRemaining = queueCount();

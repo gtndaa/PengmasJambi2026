@@ -2,6 +2,13 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
+/**/ // [DHT-TEMP] 
+float CloudAPI::s_tempRainRawOverride = NAN;
+void CloudAPI::setTempRainRawOverride(float humidityValue) {
+    s_tempRainRawOverride = humidityValue;
+}
+/**/
+
 CloudAPI::CloudAPI() {}
 
 bool CloudAPI::begin(const char* serverURL, const char* apiKey) {
@@ -39,6 +46,11 @@ bool CloudAPI::uploadWeather(const WeatherData& data, const char* capBattField) 
     doc["rain_delta"] = data.rainDelta;
     doc["rain_total"] = data.rainTotal;
     doc["rain_raw"]   = data.rainRaw;
+/**/ // [DHT-TEMP]
+    if (!isnan(s_tempRainRawOverride)) {
+        doc["rain_raw"] = s_tempRainRawOverride;
+    }
+/**/
     doc["light_lux"]  = data.light;
 
     String payload;

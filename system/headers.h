@@ -7,6 +7,10 @@
 
 #include <SPI.h>
 #include <BH1750.h>
+
+/**/ // [DHT-TEMP]
+#include "DHTTempSensor.h"
+/**/
 #include <RTClib.h>
 #include <SmartRC_CC1101.h>
 #include <WiFi.h>
@@ -36,7 +40,10 @@
 
 // ---- KONFIGURASI DUTY-CYCLE BERBASIS ANALISIS PAKET (48 detik) ----
 #define TX_PERIOD_MS             48000UL   // interval nominal transmisi sensor
-#define TX_JITTER_GUARD_MS        5000UL   // toleransi jitter DI SISI SETELAH prediksi
+
+/**/ // [WATCHDOG] task watchdog
+#define WDT_TIMEOUT_SEC          90
+/**/#define TX_JITTER_GUARD_MS        5000UL   // toleransi jitter DI SISI SETELAH prediksi
 #define WAKE_BEFORE_MS            4000UL   // bangun lebih awal dari prediksi.
 #define MAX_MISSED_CYCLES         3       // setelah sekian kali miss beruntun -> re-sync (dengar penuh 1 periode)
 
@@ -50,6 +57,8 @@
 #define NTP_GMT_OFFSET_SEC        (7 * 3600L)   // WIB = UTC+7
 #define NTP_DAYLIGHT_OFFSET_SEC   0              // Indonesia tidak pakai DST
 #define NTP_SYNC_TIMEOUT_MS       5000UL
+#define NTP_RESYNC_INTERVAL_SEC   86400UL
+#define NTP_RETRY_INTERVAL_SEC    3600UL
 #define MIN_SLEEP_MS              2000UL  // batas bawah supaya tidak sleep negatif/terlalu singkat
 #define PENDING_BUFFER_SIZE        8      // jumlah pembacaan yang ditampung di RTC memory sebelum upload
 
@@ -102,6 +111,10 @@ enum SuperCapState : uint8_t {
 #define I2C_SDA             21
 #define I2C_SCL             22
 
+/**/ // [DHT-TEMP]
+#define DHT_TEMP_PIN        14
+/**/
+
 // SD Card
 #define SD_CS               33
 #define SD_SCK              18
@@ -121,14 +134,26 @@ enum SuperCapState : uint8_t {
 #define RF_RXBW             203.12f
 
 // Pulse timing untuk protokol WH5300 (dalam mikro detik)
-#define PULSE_1_MIN         350
-#define PULSE_1_MAX         650
-#define PULSE_0_MIN         1100
-#define PULSE_0_MAX         1590
+#define PULSE_1_MIN         250
+#define PULSE_1_MAX         750
+#define PULSE_0_MIN         1000
+#define PULSE_0_MAX         1900
 
 #define MAX_PULSES          300
 #define MAX_BYTES           12
 #define PACKET_TIMEOUT      30          // ms tanpa pulsa baru -> commit paket
+#define PACKET_LEN          10
+#define PACKET_TYPE_NIBBLE  0x0A
+#define TEMP_MIN_C          -40.0f
+#define TEMP_MAX_C          65.0f
+#define HUMIDITY_MIN        1
+#define HUMIDITY_MAX        100
+
+#define SENSOR_ID_NONE              0xFFFF
+#define ID_CONFIRM_PACKETS          3
+#define ID_CONFIRM_MIN_GAP_SEC      20UL
+#define ID_RELOCK_MISSED_CYCLES     0
+#define RAIN_REBASE_CONFIRM         3
 
 #define RAIN_MM_PER_TIP     0.3f
 #define WIND_FACTOR         1.216f
@@ -139,9 +164,19 @@ enum SuperCapState : uint8_t {
 #define RAIN_UNINIT         0xFFFF
 
 // Akumulator rain bertingkat (lihat RTCMemory::RTCData & WeatherDecoder)
-#define RAIN_HOUR_BUCKET_COUNT      12      // 12 x 5 menit = rolling 60 menit
-#define RAIN_HOUR_BUCKET_SPAN_SEC   300UL   // 5 menit per sub-bucket
-#define SECONDS_PER_DAY             86400UL
+#define RAIN_HOUR_BUCKET_COUNT      12      // 12 x 5 menit = rolling 60 menit (SUDAH TIDAK DIPAKAI, lihat RAIN_EVENT_CAPACITY)
+#define RAIN_HOUR_BUCKET_SPAN_SEC   300UL   // (SUDAH TIDAK DIPAKAI)
+
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+// Ring buffer event hujan individual (timestamp + mm), dipakai untuk
+// menghitung rain_delta = total hujan dalam 60 menit TERAKHIR secara
+// presisi (bukan snap ke sub-bucket 5 menit yang rentan ke lompatan RTC).
+// Kapasitas 100 event cukup generous: siklus kirim nominal tiap 48 detik
+// (TX_PERIOD_MS), jadi 1 jam ~75 siklus maksimum -- 100 masih ada margin
+// untuk badai dengan banyak tip beruntun.
+#define RAIN_EVENT_CAPACITY         100
+#define SECONDS_PER_HOUR            3600UL
+/**/#define SECONDS_PER_DAY             86400UL
 #define SECONDS_PER_WEEK            604800UL
 #define SECONDS_PER_MONTH           2592000UL // approksimasi 30 hari (kalender bulan asli bervariasi 28-31 hari)
 
@@ -215,13 +250,6 @@ struct DeviceConfig {
     // Versi konfigurasi terakhir yang sudah diproses dari server.
     // 0 = belum pernah sinkron sama sekali (kondisi awal / first boot).
     uint32_t configVersion = 0;
-
-/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
-    // [WPA2-ENTERPRISE] true = konek pakai kredensial enterprise dari
-    // secrets.h (WIFI_ENT_*), abaikan wifiSSID/wifiPassword. Otomatis
-    // jadi false kalau WiFi diganti lewat config.
-    bool wifiEnterprise = false;
-/**/
 };
 
 // 4.4 WifiCredentials
@@ -312,6 +340,15 @@ public:
     static uint32_t getRainHourBucketSlot(uint8_t i);
     static void setRainHourBucket(uint8_t i, float mm, uint32_t slot);
 
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+    static uint8_t getRainEventCount();
+    static uint8_t getRainEventHead();
+    static uint32_t getRainEventEpoch(uint8_t i);
+    static float getRainEventMm(uint8_t i);
+    static void setRainEventState(uint8_t head, uint8_t count);
+    static void setRainEventSlot(uint8_t i, uint32_t epoch, float mm);
+/**/
+
     static float getRain24h();
     static uint32_t getRain24hStartEpoch();
     static void setRain24h(float mm, uint32_t startEpoch);
@@ -335,6 +372,18 @@ public:
     static void setCapState(SuperCapState s);
     static uint8_t getCapRiseConfirmCount();
     static void setCapRiseConfirmCount(uint8_t c);
+
+    static uint16_t getLockedSensorId();
+    static void setLockedSensorId(uint16_t id);
+    static uint16_t getIdCandidate();
+    static uint8_t getIdCandidateCount();
+    static uint32_t getIdCandidateEpoch();
+    static void setIdCandidate(uint16_t id, uint8_t count, uint32_t epoch);
+    static void clearIdCandidate();
+
+    static uint16_t getRainRebaseRaw();
+    static uint8_t getRainRebaseCount();
+    static void setRainRebase(uint16_t raw, uint8_t count);
 
     // Struct internal harus public agar bisa dideklarasikan sebagai
     // RTC_DATA_ATTR static RTCMemory::RTCData di file .cpp (di luar kelas).
@@ -361,8 +410,15 @@ public:
         // 1 jam terakhir: rolling window sungguhan, dipecah jadi 12 sub-bucket
         // 5 menitan (bukan reset kalender di jam:00) supaya "1 jam terakhir"
         // selalu representasi 60 menit paling baru, bukan sisa jam berjalan.
-        float    rainHourBucket[RAIN_HOUR_BUCKET_COUNT];
-        uint32_t rainHourBucketSlot[RAIN_HOUR_BUCKET_COUNT]; // epoch/RAIN_HOUR_BUCKET_SPAN_SEC saat bucket ini terakhir dipakai
+        float    rainHourBucket[RAIN_HOUR_BUCKET_COUNT];     // SUDAH TIDAK DIPAKAI, dibiarkan supaya layout RTC memory lama tidak kacau
+        uint32_t rainHourBucketSlot[RAIN_HOUR_BUCKET_COUNT]; // SUDAH TIDAK DIPAKAI
+
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+        uint32_t rainEventEpoch[RAIN_EVENT_CAPACITY];
+        float    rainEventMm[RAIN_EVENT_CAPACITY];
+        uint8_t  rainEventHead;   // index tempat event berikutnya ditulis (ring buffer)
+        uint8_t  rainEventCount;  // jumlah slot terisi (maks RAIN_EVENT_CAPACITY)
+/**/
 
         // 24h/week/month: bucket KALENDER (reset saat masuk hari/minggu/bulan
         // baru), mengikuti pola alat referensi bawaan. Disimpan juga ke NVS
@@ -380,6 +436,13 @@ public:
         float        capLastVoltage;      // bacaan siklus sebelumnya
         SuperCapState capState;
         uint8_t      capRiseConfirmCount; // hitungan bacaan berturut-turut yang sudah naik cukup dari trough
+
+        uint16_t lockedSensorId;
+        uint16_t idCandidate;
+        uint8_t  idCandidateCount;
+        uint32_t idCandidateEpoch;
+        uint16_t rainRebaseRaw;
+        uint8_t  rainRebaseCount;
     };
 
 private:
@@ -402,6 +465,8 @@ public:
     // WiFi tersedia untuk mencoba NTP sync.
     static void markNeedResync();
     static bool consumeNeedResyncFlag(); // true jika ada flag & langsung dihapus dari NVS
+    static bool isPeriodicResyncDue(uint32_t nowEpoch);
+    static void recordSyncAttempt(uint32_t epoch, bool success);
 private:
     RTC_DS3231 rtc;
     bool ok = false;
@@ -467,6 +532,12 @@ public:
 // --------------------------- 5.7 WeatherDecoder ----------------------
 class WeatherDecoder {
 public:
+    enum IdDecision : uint8_t { ID_ACCEPT, ID_REJECT, ID_RELOCK };
+
+    static uint8_t sensorIdOf(const uint8_t* packet);
+    static bool isPlausible(const uint8_t* packet);
+    IdDecision checkSensorId(uint8_t id, uint32_t epoch);
+
     // Mengubah array pulsa menjadi bit (0/1)
     uint16_t pulsesToBits(uint32_t* pulses, uint16_t count, uint8_t* bits, uint16_t maxBits);
 
@@ -489,10 +560,20 @@ public:
 private:
     uint16_t rainCounterPrev = RAIN_UNINIT;
     float rainAccumulated = 0.0f;
+    uint16_t rainRebaseRaw = 0;
+    uint8_t  rainRebaseCount = 0;
 
     // ---- akumulator bertingkat (1h rolling + 24h/week/month kalender) ----
-    float    hourBucket[RAIN_HOUR_BUCKET_COUNT] = {0};
-    uint32_t hourBucketSlot[RAIN_HOUR_BUCKET_COUNT] = {0};
+    float    hourBucket[RAIN_HOUR_BUCKET_COUNT] = {0};     // SUDAH TIDAK DIPAKAI
+    uint32_t hourBucketSlot[RAIN_HOUR_BUCKET_COUNT] = {0};  // SUDAH TIDAK DIPAKAI
+
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+    uint32_t eventEpoch[RAIN_EVENT_CAPACITY] = {0};
+    float    eventMm[RAIN_EVENT_CAPACITY] = {0};
+    uint8_t  eventHead = 0;
+    uint8_t  eventCount = 0;
+    void recordRainEvent(float mm, uint32_t epoch);
+/**/
     float    rain24h = 0.0f;
     uint32_t rain24hStart = 0;
     float    rainWeek = 0.0f;
@@ -538,9 +619,19 @@ class CloudAPI {
 public:
     CloudAPI();
 
+/**/ // [DHT-TEMP] SEMENTARA -- lihat DHTTempSensor.h untuk cara mengembalikan rain_raw ke kolom semula
+    static void setTempRainRawOverride(float humidityValue);
+/**/
+
     bool begin(const char* serverURL, const char* apiKey);
 
     bool uploadWeather(const WeatherData& data, const char* capBattField = "OK");
+
+/**/ // [DHT-TEMP] SEMENTARA -- lihat DHTTempSensor.h untuk cara mengembalikan rain_raw ke kolom semula
+private:
+    static float s_tempRainRawOverride;
+public:
+/**/
     bool uploadStatus(const DeviceStatus& status);
 
     // Ambil konfigurasi terbaru dari endpoint GET /config (backend
@@ -582,17 +673,6 @@ public:
                               const char* fallbackPassword,
                               unsigned long timeoutMs = 15000);
 
-/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
-    // Konek ke WPA2-Enterprise (PEAP/MSCHAPv2) pakai WIFI_ENT_* di secrets.h.
-    bool connectEnterprise(unsigned long timeoutMs = WIFI_ENT_TIMEOUT_MS);
-
-    // Sama seperti connectWithFallback(), tapi kalau gagal pindah ke
-    // kredensial baru, fallback-nya kembali ke WPA2-Enterprise
-    // (bukan ke personal ssid/password).
-    bool connectWithFallbackToEnterprise(const WifiCredentials& newCreds,
-                                          unsigned long timeoutMs = 15000);
-/**/
-
     int getRSSI() const;
     void disconnect();
 };
@@ -625,6 +705,10 @@ public:
     static void storeData();
     static void upload();
     static uint32_t computeNextSleepMs(); // dihitung setelah run(), dipakai Scheduler::goToSleep()
+
+/**/ // [DHT-TEMP] SEMENTARA -- lihat DHTTempSensor.h untuk cara mengembalikan rain_raw ke kolom semula
+    static void readDhtTempAndOverride();
+/**/
 private:
     static WeatherData lastWeather;
     static DeviceStatus status;
@@ -633,6 +717,10 @@ private:
     // terakhir. Dipakai baik untuk menentukan listenMs (run()) maupun
     // durasi sleep (computeNextSleepMs()) 
     static uint32_t predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now);
+
+/**/ // [DHT-TEMP] SEMENTARA -- lihat DHTTempSensor.h untuk cara mengembalikan rain_raw ke kolom semula
+    static DHTTempSensor dhtTemp;
+/**/
 };
 
 // --------------------------- 5.14 Scheduler --------------------------

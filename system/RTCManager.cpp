@@ -84,11 +84,25 @@ bool RTCManager::syncFromNTP(uint32_t timeoutMs) {
     }
 
     uint32_t localEpoch = (uint32_t)nowSec + NTP_GMT_OFFSET_SEC;
+    uint32_t rtcBefore = rtc.now().unixtime();
     DateTime ntpNow(localEpoch);
     rtc.adjust(ntpNow);
-    LOG_INFO("RTC berhasil di-sync dari NTP: %04d-%02d-%02d %02d:%02d:%02d (WIB)",
+    int32_t correction = (int32_t)(localEpoch - rtcBefore);
+
+    uint32_t lastPkt = RTCMemory::getLastPacketEpoch();
+    if (lastPkt != 0) {
+        uint32_t shifted = lastPkt + (uint32_t)correction;
+        RTCMemory::setLastPacketEpoch(shifted != 0 ? shifted : 1);
+    }
+    for (uint8_t i = 0; i < RTCMemory::getRainEventCount(); i++) {
+        RTCMemory::setRainEventSlot(i, RTCMemory::getRainEventEpoch(i) + (uint32_t)correction,
+                                    RTCMemory::getRainEventMm(i));
+    }
+    recordSyncAttempt(localEpoch, true);
+
+    LOG_INFO("RTC berhasil di-sync dari NTP: %04d-%02d-%02d %02d:%02d:%02d (WIB), koreksi %ld s",
               ntpNow.year(), ntpNow.month(), ntpNow.day(),
-              ntpNow.hour(), ntpNow.minute(), ntpNow.second());
+              ntpNow.hour(), ntpNow.minute(), ntpNow.second(), (long)correction);
     return true;
 }
 
@@ -106,4 +120,29 @@ bool RTCManager::consumeNeedResyncFlag() {
     if (need) p.remove("need");
     p.end();
     return need;
+}
+
+bool RTCManager::isPeriodicResyncDue(uint32_t nowEpoch) {
+    Preferences p;
+    if (!p.begin("rtcsync", true)) return true;
+    uint32_t last = p.getUInt("last", 0);
+    uint32_t tried = p.getUInt("tried", 0);
+    p.end();
+
+    bool stale = (last == 0) || (nowEpoch < last) || (nowEpoch - last >= NTP_RESYNC_INTERVAL_SEC);
+    if (!stale) return false;
+    bool recentlyTried = (tried != 0) && (nowEpoch >= tried) && (nowEpoch - tried < NTP_RETRY_INTERVAL_SEC);
+    return !recentlyTried;
+}
+
+void RTCManager::recordSyncAttempt(uint32_t epoch, bool success) {
+    Preferences p;
+    if (!p.begin("rtcsync", false)) return;
+    if (success) {
+        p.putUInt("last", epoch);
+        p.putUInt("tried", 0);
+    } else {
+        p.putUInt("tried", epoch);
+    }
+    p.end();
 }

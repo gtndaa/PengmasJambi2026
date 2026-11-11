@@ -65,6 +65,11 @@ void RTCMemory::init() {
             rtcData->rainHourBucketSlot[i] = 0;
         }
 
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+        rtcData->rainEventHead = 0;
+        rtcData->rainEventCount = 0;
+/**/
+
         // Tren daya supercap direset tiap cold-boot (bukan bangun dari
         // deep sleep). Cold-boot berarti device baru nyala/brownout,
         // jadi state lama sudah tidak relevan, mulai dari UNKNOWN lagi.
@@ -73,6 +78,18 @@ void RTCMemory::init() {
         rtcData->capLastVoltage = 0.0f;
         rtcData->capState = CAP_STATE_UNKNOWN;
         rtcData->capRiseConfirmCount = 0;
+
+        rtcData->lockedSensorId = SENSOR_ID_NONE;
+        Preferences idp;
+        if (idp.begin("rfid", true)) {
+            rtcData->lockedSensorId = idp.getUShort("id", SENSOR_ID_NONE);
+            idp.end();
+        }
+        rtcData->idCandidate = SENSOR_ID_NONE;
+        rtcData->idCandidateCount = 0;
+        rtcData->idCandidateEpoch = 0;
+        rtcData->rainRebaseRaw = 0;
+        rtcData->rainRebaseCount = 0;
     }
 }
 
@@ -235,6 +252,32 @@ void RTCMemory::setRainHourBucket(uint8_t i, float mm, uint32_t slot) {
     rtcData->rainHourBucketSlot[i] = slot;
 }
 
+/**/ // [RAIN-DELTA-FIX] rolling 1 jam berbasis event timestamp (gantikan sub-bucket 5 menit lama)
+uint8_t RTCMemory::getRainEventCount() { return rtcData->rainEventCount; }
+uint8_t RTCMemory::getRainEventHead()  { return rtcData->rainEventHead; }
+
+uint32_t RTCMemory::getRainEventEpoch(uint8_t i) {
+    if (i >= RAIN_EVENT_CAPACITY) return 0;
+    return rtcData->rainEventEpoch[i];
+}
+
+float RTCMemory::getRainEventMm(uint8_t i) {
+    if (i >= RAIN_EVENT_CAPACITY) return 0.0f;
+    return rtcData->rainEventMm[i];
+}
+
+void RTCMemory::setRainEventState(uint8_t head, uint8_t count) {
+    rtcData->rainEventHead = head;
+    rtcData->rainEventCount = count;
+}
+
+void RTCMemory::setRainEventSlot(uint8_t i, uint32_t epoch, float mm) {
+    if (i >= RAIN_EVENT_CAPACITY) return;
+    rtcData->rainEventEpoch[i] = epoch;
+    rtcData->rainEventMm[i] = mm;
+}
+/**/
+
 float RTCMemory::getRain24h() { return rtcData->rain24h; }
 uint32_t RTCMemory::getRain24hStartEpoch() { return rtcData->rain24hStartEpoch; }
 void RTCMemory::setRain24h(float mm, uint32_t startEpoch) {
@@ -267,3 +310,34 @@ SuperCapState RTCMemory::getCapState() { return rtcData->capState; }
 void RTCMemory::setCapState(SuperCapState s) { rtcData->capState = s; }
 uint8_t RTCMemory::getCapRiseConfirmCount() { return rtcData->capRiseConfirmCount; }
 void RTCMemory::setCapRiseConfirmCount(uint8_t c) { rtcData->capRiseConfirmCount = c; }
+
+uint16_t RTCMemory::getLockedSensorId() { return rtcData->lockedSensorId; }
+void RTCMemory::setLockedSensorId(uint16_t id) {
+    if (rtcData->lockedSensorId == id) return;
+    rtcData->lockedSensorId = id;
+    Preferences p;
+    if (p.begin("rfid", false)) {
+        p.putUShort("id", id);
+        p.end();
+    }
+}
+uint16_t RTCMemory::getIdCandidate() { return rtcData->idCandidate; }
+uint8_t RTCMemory::getIdCandidateCount() { return rtcData->idCandidateCount; }
+uint32_t RTCMemory::getIdCandidateEpoch() { return rtcData->idCandidateEpoch; }
+void RTCMemory::setIdCandidate(uint16_t id, uint8_t count, uint32_t epoch) {
+    rtcData->idCandidate = id;
+    rtcData->idCandidateCount = count;
+    rtcData->idCandidateEpoch = epoch;
+}
+void RTCMemory::clearIdCandidate() {
+    rtcData->idCandidate = SENSOR_ID_NONE;
+    rtcData->idCandidateCount = 0;
+    rtcData->idCandidateEpoch = 0;
+}
+
+uint16_t RTCMemory::getRainRebaseRaw() { return rtcData->rainRebaseRaw; }
+uint8_t RTCMemory::getRainRebaseCount() { return rtcData->rainRebaseCount; }
+void RTCMemory::setRainRebase(uint16_t raw, uint8_t count) {
+    rtcData->rainRebaseRaw = raw;
+    rtcData->rainRebaseCount = count;
+}

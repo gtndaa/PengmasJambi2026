@@ -1,6 +1,14 @@
 #include "headers.h"
+#include <esp_task_wdt.h>
+
+/**/ // [DHT-TEMP]
+#include "DHTTempSensor.h"
+/**/
 
 WeatherData SystemManager::lastWeather;
+/**/ // [DHT-TEMP]
+DHTTempSensor SystemManager::dhtTemp;
+/**/
 DeviceStatus SystemManager::status;
 bool SystemManager::packetReceivedThisCycle = false;
 
@@ -28,6 +36,22 @@ void SystemManager::init() {
     Serial.begin(115200);
     delay(200);
 
+/**/ // [WATCHDOG] task watchdog
+#if ESP_IDF_VERSION_MAJOR >= 5
+    esp_task_wdt_config_t twdtConfig = {
+        .timeout_ms = (uint32_t)WDT_TIMEOUT_SEC * 1000UL,
+        .idle_core_mask = 0,     // tidak perlu ikut mengawasi idle task
+        .trigger_panic = true,   // timeout -> panic -> reboot otomatis
+    };
+    esp_task_wdt_init(&twdtConfig);
+#else
+    esp_task_wdt_init(WDT_TIMEOUT_SEC, true); // true = panic (reboot) saat timeout
+#endif
+    esp_task_wdt_add(NULL); // subscribe task yang sedang berjalan (setup())
+    esp_task_wdt_reset();
+    LOG_INFO("[WDT] Task watchdog aktif, timeout %d detik, reset reason akan tercatat TASK_WDT(6) kalau ini yang memicu restart", WDT_TIMEOUT_SEC);
+/**/
+
     BootManager::init();
 
     RTCMemory::incrementWakeCounter();
@@ -44,6 +68,10 @@ void SystemManager::init() {
 
     PowerManager pm;
     pm.begin();
+
+/**/ // [DHT-TEMP]
+    dhtTemp.begin(DHT_TEMP_PIN);
+/**/
 }
 
 uint32_t SystemManager::predictNextExpectedEpoch(uint32_t lastPkt, uint32_t now) {
@@ -188,7 +216,7 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
 
             uint16_t bitCount = decoder.pulsesToBits(pulses, count, bits, MAX_PULSES);
             bool decoded = false;
-            if (bitCount >= 64) {
+            if (bitCount >= (uint16_t)PACKET_LEN * 8) {
                 uint8_t packet[MAX_BYTES];
                 uint8_t pktLen;
                 if (decoder.scanForPacket(bits, bitCount, packet, &pktLen)) {
@@ -200,8 +228,31 @@ void SystemManager::receiveWeather(uint32_t listenWindowMs) {
                         epoch = millis() / 1000; // fallback tanpa RTC (tidak ideal utk sync)
                     }
 
+                    uint8_t sid = WeatherDecoder::sensorIdOf(packet);
+                    uint16_t prevLocked = RTCMemory::getLockedSensorId();
+                    WeatherDecoder::IdDecision idDecision = decoder.checkSensorId(sid, epoch);
+                    if (idDecision == WeatherDecoder::ID_REJECT) {
+                        if (prevLocked == SENSOR_ID_NONE) {
+                            LOG_INFO("Sensor ID 0x%02X terdeteksi, konfirmasi %u/%u sebelum dikunci",
+                                     sid, RTCMemory::getIdCandidateCount(), ID_CONFIRM_PACKETS);
+                        } else {
+                            LOG_WARN("Paket valid dari sensor ID 0x%02X diabaikan (terkunci ke 0x%02X, kandidat %u/%u, missed=%u)",
+                                     sid, (unsigned)prevLocked, RTCMemory::getIdCandidateCount(), ID_CONFIRM_PACKETS,
+                                     RTCMemory::getMissedCycles());
+                        }
+                    }
+                    if (idDecision == WeatherDecoder::ID_RELOCK) {
+                        if (prevLocked == SENSOR_ID_NONE) {
+                            LOG_INFO("Sensor ID dikunci ke 0x%02X", sid);
+                        } else {
+                            LOG_WARN("Sensor ID dikunci ulang 0x%02X -> 0x%02X (sensor lama hilang %u siklus), baseline counter hujan direset",
+                                     (unsigned)prevLocked, sid, RTCMemory::getMissedCycles());
+                        }
+                    }
+
                     float rainAcc;
-                    if (decoder.decodePacket(packet, pktLen, lastWeather, rainAcc, epoch)) {
+                    if (idDecision != WeatherDecoder::ID_REJECT &&
+                        decoder.decodePacket(packet, pktLen, lastWeather, rainAcc, epoch)) {
                         lastWeather.timestamp = epoch;
 
                         decoder.saveRainStateToRTC();
@@ -241,6 +292,13 @@ void SystemManager::readLight(LightSensor& light) {
     delay(200);
 }
 
+/**/ // [DHT-TEMP]
+void SystemManager::readDhtTempAndOverride() {
+    float h = dhtTemp.readHumidity();
+    CloudAPI::setTempRainRawOverride(h);
+}
+/**/
+
 void SystemManager::storeData() {
     SDManager sd;
     if (!sd.begin() || !sd.isPresent()) return;
@@ -278,16 +336,23 @@ void SystemManager::upload() {
     // Konek pakai kredensial yang sudah diketahui berhasil (tersimpan di NVS,
     // default-nya dari secrets.h saat pertama kali boot).
     WifiManager wifi;
-/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
-    // Boot pertama: WPA2-Enterprise. Setelah WiFi diganti lewat config -> personal.
-    LOG_INFO("[WIFI] Mode boot ini: %s", cfg.wifiEnterprise ? "WPA2-Enterprise" : "WPA/WPA2 Personal");
-    bool wifiOk = cfg.wifiEnterprise
-                    ? wifi.connectEnterprise()
-                    : wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str());
+    String curSsid = cfg.wifiSSID;
+    String curPass = cfg.wifiPassword;
+    esp_task_wdt_reset();
+    bool wifiOk = wifi.connect(curSsid.c_str(), curPass.c_str());
+    if (!wifiOk && (curSsid != DEFAULT_WIFI_SSID || curPass != DEFAULT_WIFI_PASSWORD)) {
+        LOG_WARN("SSID tersimpan (%s) gagal, mencoba SSID bawaan firmware: %s",
+                  curSsid.c_str(), DEFAULT_WIFI_SSID);
+        wifi.disconnect();
+        delay(100);
+        esp_task_wdt_reset();
+        wifiOk = wifi.connect(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
+        if (wifiOk) {
+            curSsid = DEFAULT_WIFI_SSID;
+            curPass = DEFAULT_WIFI_PASSWORD;
+        }
+    }
     if (!wifiOk) {
-/*/ // UNCOMMENT THIS LINE FOR NON ENTERPRISE USAGE
-    if (!wifi.connect(cfg.wifiSSID.c_str(), cfg.wifiPassword.c_str())) {
-/**/
         LOG_ERROR("Gagal konek WiFi");
         if (sdReady) {
             // Pindahkan semua data yang baru terkumpul ke SD supaya tidak
@@ -313,18 +378,29 @@ void SystemManager::upload() {
         return;
     }
 
+/**/ // [WATCHDOG] task watchdog
+    esp_task_wdt_reset();
+/**/
+/**/ // [DHT-TEMP]
+    readDhtTempAndOverride();
+/**/
     CloudAPI api;
     api.begin(cfg.serverURL.c_str(), cfg.apiKey.c_str());
 
-    if (RTCManager::consumeNeedResyncFlag()) {
+    {
+        bool urgentResync = RTCManager::consumeNeedResyncFlag();
         RTCManager rtcSync;
-        if (rtcSync.begin() && rtcSync.isOK()) {
-            if (!rtcSync.syncFromNTP(NTP_SYNC_TIMEOUT_MS)) {
-                RTCManager::markNeedResync(); // gagal -> tandai lagi utk dicoba siklus depan
+        bool rtcReady = rtcSync.begin() && rtcSync.isOK();
+        bool periodicResync = rtcReady && RTCManager::isPeriodicResyncDue(rtcSync.now().unixtime());
+        if (urgentResync || periodicResync) {
+            LOG_INFO("NTP resync dimulai (alasan: %s)", urgentResync ? "reset/brownout" : "jadwal harian");
+            bool synced = rtcReady && rtcSync.syncFromNTP(NTP_SYNC_TIMEOUT_MS);
+            if (!synced) {
+                if (urgentResync) RTCManager::markNeedResync();
+                if (rtcReady) RTCManager::recordSyncAttempt(rtcSync.now().unixtime(), false);
             }
-        } else {
-            RTCManager::markNeedResync();
         }
+        esp_task_wdt_reset();
     }
 
     // ------------------------------------------------------------------
@@ -361,24 +437,12 @@ void SystemManager::upload() {
                 WifiCredentials newCreds;
                 newCreds.ssid = remote.ssid;
                 newCreds.password = remote.password;
-/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
-                bool switched = cfg.wifiEnterprise
-                    ? wifi.connectWithFallbackToEnterprise(newCreds)
-                    : wifi.connectWithFallback(newCreds,
-                                                cfg.wifiSSID.c_str(),
-                                                cfg.wifiPassword.c_str());
-/* // UNCOMMENT THIS LINE FOR NON ENTERPRISE USAGE
                 bool switched = wifi.connectWithFallback(newCreds,
-                                                           cfg.wifiSSID.c_str(),
-                                                           cfg.wifiPassword.c_str());
-*/
+                                                           curSsid.c_str(),
+                                                           curPass.c_str());
                 if (switched) {
                     cfg.wifiSSID = remote.ssid;
                     cfg.wifiPassword = remote.password;
-/**/ // COMMENT THIS SECTION FOR NON ENTERPRISE USAGE
-                    cfg.wifiEnterprise = false;   // sudah pindah ke personal, jangan enterprise lagi
-                    LOG_INFO("[WIFI] Mode diubah ke WPA/WPA2 Personal (disimpan ke NVS)");
-/**/
                     changed = true;
                     LOG_INFO("WiFi diganti ke SSID baru: %s", remote.ssid.c_str());
                 } else {
@@ -430,6 +494,9 @@ void SystemManager::upload() {
     for (uint8_t i = 0; i < count && i < PENDING_BUFFER_SIZE; i++) {
         WeatherData d;
         if (!RTCMemory::getPending(i, d)) continue;
+/**/ // [WATCHDOG] task watchdog
+        esp_task_wdt_reset();
+/**/
         if (sdRemaining == 0 && api.uploadWeather(d, capBattField)) {
             sent++;
         } else if (sdReady && sd.queuePush(d)) {
