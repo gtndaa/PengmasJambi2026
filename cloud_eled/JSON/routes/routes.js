@@ -6,7 +6,7 @@ const router = express.Router();
 const { getUsers, register, login } = require('../controller/Users');
 const { authenticateJWT } = require('../middleware/tokenVerification');
 const { setDeviceConfig, getDeviceConfig } = require('../controller/deviceConfigController');
-const { getLatestSensorData, tambahSensorData } = require('../controller/SensorController');
+const { getLatestSensorData, tambahSensorData, getSensorRange } = require('../controller/SensorController');
 
 // Home Route
 router.get('/', async (req, res) => {
@@ -24,6 +24,7 @@ router.post('/login', login);
 // Route Sensor (Baru) -> Ini yang akan dipanggil Flutter
 router.get('/sensordata', getLatestSensorData);
 router.post('/sensordata', tambahSensorData);
+router.get('/sensordata/history', getSensorRange);
 
 router.post('/config', setDeviceConfig);
 router.get('/config', getDeviceConfig);
