@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../consts/colors.dart';
 import '../../widgets/gradient_header.dart';
@@ -128,25 +127,6 @@ class _RegisterScreenState
       _showMessage(result["message"]);
       return;
     }
-
-    final prefs =
-    await SharedPreferences.getInstance();
-
-    final usernameKey =
-        usernameController.text
-            .trim()
-            .toLowerCase();
-
-    final firstName =
-        firstNameController.text.trim();
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      const SnackBar(
-        content:
-            Text('Akun berhasil dibuat'),
-      ),
-    );
 
     // Kembali ke Login dan kirim username
     Navigator.pop(

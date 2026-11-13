@@ -6,6 +6,8 @@ import '../../services/location_storage_service.dart';
 import '../../services/bmkg_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../consts/colors.dart';
+import '../../utils/weather_icon.dart';
+import '../../widgets/chibi_avatar.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -379,8 +381,11 @@ class _DashboardScreenState
           },
 
           child: SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
+            // Clamping: halaman tidak bisa digeser kalau isinya muat di layar,
+            // tapi tarik-ke-bawah untuk refresh tetap jalan.
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
 
             padding:
                 const EdgeInsets.all(20),
@@ -454,22 +459,10 @@ class _DashboardScreenState
           ],
         ),
 
-        CircleAvatar(
-          radius: 24,
-
-          child: Text(
-            userName.isEmpty
-                ? "U"
-                : userName[0].toUpperCase(),
-  
-            style:
-                const TextStyle(
-              fontSize: 20,
-
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
+        ChibiAvatar(
+          // seed sama dengan halaman profil supaya chibinya kembar
+          seed: ApiService.currentUsername ?? userName,
+          size: 48,
         ),
       ],
     );
@@ -621,13 +614,16 @@ class _DashboardScreenState
             ],
           ),
           const SizedBox(height: 4),
-          Icon(
-            _getWeatherIconData(weather),
-            size: 84,
-            color: weather.toLowerCase().contains('cerah')
-                ? Colors.amber.shade300
-                : Colors.white,
-          ),
+          Builder(builder: (_) {
+            // ikon utama = kondisi sekarang, jadi pakai jam HP
+            final night = isNightHour(DateTime.now().hour);
+            final sunny = !night && weather.toLowerCase().contains('cerah');
+            return Icon(
+              weatherIcon(weather, night: night),
+              size: 84,
+              color: sunny ? Colors.amber.shade300 : Colors.white,
+            );
+          }),
           const SizedBox(height: 4),
           Text(
             '$temperature°',
@@ -773,7 +769,8 @@ class _DashboardScreenState
 
     final size = MediaQuery.sizeOf(context);
     final itemWidth = (size.width - 40) / 4; // 4 item per layar (padding 20+20)
-    final listHeight = (size.height * 0.24).clamp(180.0, 260.0).toDouble();
+    // setinggi isinya saja (jam + ikon + suhu), supaya tidak ada ruang kosong di bawah
+    final listHeight = 104.0 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.4);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -853,6 +850,7 @@ class _DashboardScreenState
                       time: _formatHourOnly(dateTime),
                       temp: '$temperature°',
                       weather: weather,
+                      night: isNightAt(dateTime),
                     );
                   },
                 ),
@@ -865,6 +863,7 @@ class _DashboardScreenState
     required String time,
     required String temp,
     required String weather,
+    required bool night,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -878,7 +877,7 @@ class _DashboardScreenState
           ),
         ),
         const SizedBox(height: 10),
-        _getColoredWeatherIcon(weather, size: 28),
+        _getColoredWeatherIcon(weather, night: night, size: 28),
         const SizedBox(height: 10),
         Text(
           temp,
@@ -894,34 +893,13 @@ class _DashboardScreenState
 
   Widget _getColoredWeatherIcon(
     String weather, {
+    required bool night,
     double size = 32,
   }) {
-    final text = weather.toLowerCase();
-    
-    IconData icon;
-    Color color;
-
-    if (text.contains('petir') || text.contains('badai')) {
-      icon = Icons.thunderstorm;
-      color = Colors.deepPurple;
-    } else if (text.contains('hujan')) {
-      icon = Icons.umbrella;
-      color = Colors.blue;
-    } else if (text.contains('cerah')) {
-      icon = Icons.wb_sunny;
-      color = Colors.amber;
-    } else if (text.contains('berawan')) {
-      icon = Icons.cloud;
-      color = const Color.fromARGB(255, 55, 115, 255);
-    } else {
-      icon = Icons.cloud_outlined;
-      color = const Color.fromARGB(255, 55, 115, 255);
-    }
-
     return Icon(
-      icon,
+      weatherIcon(weather, night: night),
       size: size,
-      color: color,
+      color: weatherIconColor(weather, night: night),
     );
   }
 
@@ -1012,7 +990,11 @@ class _DashboardScreenState
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Center(
-                                child: _getColoredWeatherIcon(weather, size: 30),
+                                child: _getColoredWeatherIcon(
+                                  weather,
+                                  night: isNightAt(raw),
+                                  size: 30,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -1091,33 +1073,4 @@ class _DashboardScreenState
     );
   }
   
-  // =====================================================
-  // ICON CUACA
-  // =====================================================
-
-  IconData _getWeatherIconData(
-    String weather,
-  ) {
-    final text =
-        weather.toLowerCase();
-
-    if (text.contains('petir') ||
-        text.contains('badai')) {
-      return Icons.thunderstorm;
-    }
-
-    if (text.contains('hujan')) {
-      return Icons.umbrella;
-    }
-
-    if (text.contains('cerah')) {
-      return Icons.wb_sunny;
-    }
-
-    if (text.contains('berawan')) {
-      return Icons.cloud;
-    }
-
-    return Icons.cloud_outlined;
-  }
 }

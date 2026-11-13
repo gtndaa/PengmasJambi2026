@@ -250,6 +250,21 @@ class _BmkgScreenState
         return;
       }
 
+      // Record terbaru dari sensor uji coba atau paket rusak (nilai mustahil):
+      // jangan ditampilkan, tetap pakai data sensor lahan yang terakhir.
+      if (!ApiService.isFieldSensorRecord(data) ||
+          !ApiService.isPlausibleRecord(data)) {
+        setState(() {
+          isLoading = false;
+          if (sensorData == null) {
+            errorMessage =
+                'Data terbaru berasal dari sensor uji coba. '
+                'Menunggu data dari sensor lahan.';
+          }
+        });
+        return;
+      }
+
       setState(() {
         sensorData =
             data;
@@ -599,6 +614,11 @@ class _BmkgScreenState
             data,
               'batt',
           ),
+        ),
+
+        // Kelembapan di dalam alat (dikirim alat lewat field rain_raw)
+        buildDeviceHumidityCard(
+          humidity: double.tryParse(getValue(data, 'rain_raw')),
         ),
 
         // Buat testing on_cap 
@@ -956,6 +976,103 @@ Widget buildPowerStatusCard({
   );
 }
 
+// =====================================================
+// DEVICE HUMIDITY STATUS CARD
+// =====================================================
+//  < 60%  Normal   : risiko kondensasi relatif rendah
+// 60-69%  Caution  : kelembapan meningkat, perlu dipantau
+// 70-79%  Warning  : potensi kondensasi meningkat
+// >= 80%  Critical : perlu segera memeriksa kondisi enclosure
+
+Widget buildDeviceHumidityCard({
+  required double? humidity,
+}) {
+  String title;
+  String description;
+  IconData icon;
+  Color statusColor;
+
+  if (humidity == null) {
+    title = 'Kelembapan Alat Tidak Diketahui';
+    description =
+        'Data kelembapan di dalam alat belum tersedia.';
+    icon = Icons.help_outline;
+    statusColor = Colors.grey;
+  } else if (humidity < 60) {
+    title = 'Kelembapan Alat Normal';
+    description = 'Risiko kondensasi relatif rendah.';
+    icon = Icons.check_circle;
+    statusColor = Colors.green;
+  } else if (humidity < 70) {
+    title = 'Kelembapan Alat Perlu Dipantau';
+    description = 'Kelembapan meningkat, perlu dipantau.';
+    icon = Icons.visibility;
+    statusColor = Colors.amber.shade700;
+  } else if (humidity < 80) {
+    title = 'Kelembapan Alat Tinggi';
+    description = 'Potensi kondensasi meningkat.';
+    icon = Icons.warning_amber_rounded;
+    statusColor = Colors.orange;
+  } else {
+    title = 'Kelembapan Alat Kritis';
+    description = 'Perlu segera memeriksa kondisi enclosure.';
+    icon = Icons.error;
+    statusColor = Colors.red;
+  }
+
+  final valueText = humidity == null
+      ? '-'
+      : '${humidity.toStringAsFixed(humidity % 1 == 0 ? 0 : 1)}%';
+
+  return Card(
+    margin: const EdgeInsets.only(
+      bottom: 9,
+    ),
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor: statusColor.withValues(alpha: 0.12),
+        child: Icon(
+          Icons.water_drop_outlined,
+          color: statusColor,
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(
+          top: 4,
+        ),
+        child: Text(
+          description,
+        ),
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: statusColor,
+            size: 20,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            valueText,
+            style: TextStyle(
+              color: statusColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
   // =====================================================
   // GET VALUE
   // =====================================================
@@ -986,13 +1103,12 @@ Widget buildPowerStatusCard({
     return '-';
   }
 
-  final speedMs = double.tryParse(value.toString());
+  // alat sudah mengirim km/j (lihat WIND_FACTOR di firmware), tidak perlu dikonversi
+  final speedKmh = double.tryParse(value.toString());
 
-  if (speedMs == null) {
+  if (speedKmh == null) {
     return '-';
   }
-
-  final speedKmh = speedMs * 3.6;
 
   return speedKmh.toStringAsFixed(2);
 }
