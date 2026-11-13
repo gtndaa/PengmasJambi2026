@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/user_model.dart';
 import '../../services/api_service.dart';
+import '../../services/location_storage_service.dart';
 import '../../widgets/navigationbar.dart';
 import '../register_screen/register_screen.dart';
 import '../../consts/colors.dart';
@@ -169,6 +170,14 @@ class _LoginScreenState
           'Gagal mengambil nama user: $e',
         );
       }
+
+      if (!mounted) {
+        return;
+      }
+
+      // Lokasi disimpan per akun: pakai lokasi milik akun ini saja
+      // (akun baru mulai tanpa lokasi, tidak mewarisi akun sebelumnya).
+      await LocationStorageService.activateForCurrentUser();
 
       if (!mounted) {
         return;

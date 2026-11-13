@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/user_model.dart';
 import '../../services/api_service.dart';
+import '../../services/location_storage_service.dart';
 import '../login_screen/login_screen.dart';
 import '../../consts/colors.dart';
 import '../../widgets/gradient_header.dart';
@@ -39,6 +40,9 @@ class _ProfileScreenState
   // =====================================================
 
   Future<void> logout() async {
+    // Lokasi akun ini tetap tersimpan untuk login berikutnya, tapi
+    // peringatan cuaca di background berhenti memakai lokasinya.
+    await LocationStorageService.clearActiveLocation();
     await apiService.logout();
 
     if (!mounted) {
