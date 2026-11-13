@@ -268,6 +268,39 @@ class _NotificationScreenState
   }
 
   Widget _buildSafeState() {
+    if (locationName == 'Lokasi belum dipilih') {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(28),
+          child: Column(
+            children: [
+              Icon(
+                Icons.location_off_outlined,
+                size: 60,
+                color: Colors.grey,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Lokasi belum dipilih',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Pilih lokasi lahanmu di halaman Home, '
+                'lalu tarik layar ini ke bawah untuk memuat '
+                'peringatan BMKG.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
         padding:

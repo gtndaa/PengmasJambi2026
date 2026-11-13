@@ -487,6 +487,12 @@ class _DashboardScreenState
       );
     }
 
+    // Akun yang belum pernah memilih lokasi: kartu cuaca (yang berisi tombol
+    // Ubah lokasi) belum bisa tampil, jadi beri tombol pilih lokasi di sini.
+    if (selectedAdm4.isEmpty) {
+      return _buildPickLocationCard();
+    }
+
     if (weatherData == null) {
       return Card(
         elevation: 2,
@@ -683,6 +689,81 @@ class _DashboardScreenState
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPickLocationCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: AppColors.blueGradient,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.30),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.add_location_alt_outlined,
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Pilih lokasi lahanmu',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Cuaca, prakiraan, dan peringatan BMKG ditampilkan '
+            'sesuai lokasi yang kamu pilih.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 18),
+          ElevatedButton.icon(
+            onPressed: _updateLocation,
+            icon: const Icon(Icons.location_on_outlined),
+            label: const Text('Pilih Lokasi'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 22,
+                vertical: 12,
+              ),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              shape: const StadiumBorder(),
             ),
           ),
         ],
