@@ -5,6 +5,7 @@ import '../../services/api_service.dart';
 import '../login_screen/login_screen.dart';
 import '../../consts/colors.dart';
 import '../../widgets/gradient_header.dart';
+import '../../widgets/chibi_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -103,19 +104,6 @@ class _ProfileScreenState
                       ? user.username
                       : 'Nama belum tersedia';
 
-          // =================================================
-          // HURUF AWAL UNTUK AVATAR
-          // =================================================
-
-          final String initial =
-              user.firstName.isNotEmpty
-                  ? user.firstName[0]
-                      .toUpperCase()
-                  : user.username.isNotEmpty
-                      ? user.username[0]
-                          .toUpperCase()
-                      : '?';
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -148,17 +136,11 @@ class _ProfileScreenState
                           shape: BoxShape.circle,
                           color: Colors.white.withValues(alpha: 0.35),
                         ),
-                        child: CircleAvatar(
-                          radius: 46,
-                          backgroundColor: Colors.white,
-                          child: Text(
-                            initial,
-                            style: TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.violetGradient.first,
-                            ),
-                          ),
+                        child: ChibiAvatar(
+                          seed: user.username.isNotEmpty
+                              ? user.username
+                              : displayedName,
+                          size: 92,
                         ),
                       ),
                       const SizedBox(height: 14),

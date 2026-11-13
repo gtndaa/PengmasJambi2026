@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/weather_icon.dart';
+
 class ForecastScreen
     extends StatelessWidget {
   const ForecastScreen({
@@ -133,6 +135,7 @@ class ForecastScreen
               children: [
                 _getWeatherIcon(
                   weather,
+                  night: isNightAt(time.toString()),
                 ),
 
                 const SizedBox(
@@ -186,42 +189,24 @@ class ForecastScreen
   }
 
   Widget _getWeatherIcon(
-    String weather,
-  ) {
+    String weather, {
+    required bool night,
+  }) {
     final text =
         weather.toLowerCase();
 
-    if (text.contains('petir') ||
-        text.contains('badai')) {
-      return const Icon(
-        Icons.thunderstorm,
-        size: 42,
-      );
-    }
-
-    if (text.contains('hujan')) {
+    // hujan di layar ini memakai ikon tetes air (tetap seperti sebelumnya)
+    if (text.contains('hujan') &&
+        !text.contains('petir') &&
+        !text.contains('badai')) {
       return const Icon(
         Icons.water_drop,
         size: 42,
       );
     }
 
-    if (text.contains('cerah')) {
-      return const Icon(
-        Icons.wb_sunny,
-        size: 42,
-      );
-    }
-
-    if (text.contains('berawan')) {
-      return const Icon(
-        Icons.cloud,
-        size: 42,
-      );
-    }
-
-    return const Icon(
-      Icons.cloud_queue,
+    return Icon(
+      weatherIcon(weather, night: night),
       size: 42,
     );
   }

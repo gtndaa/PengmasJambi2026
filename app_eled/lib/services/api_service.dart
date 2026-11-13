@@ -15,10 +15,63 @@ class ApiService {
       'https://k27gamn56cmjkns7mcjny4wovu0jbems.lambda-url.ap-southeast-3.on.aws';
 
   // =====================================================
+  // SENSOR LAHAN
+  // =====================================================
+  // Di lahan hanya ada 1 sensor: alat WS-ELED-001 channel 0. Record lain
+  // (channel lain, ESP_TEST, 0x22, dst.) berasal dari uji coba, jadi tidak
+  // ditampilkan di data saat ini maupun dihitung di grafik riwayat.
+
+  static const String fieldDeviceId = 'WS-ELED-001';
+  static const int fieldChannel = 0;
+
+  static bool isFieldSensorRecord(Map<dynamic, dynamic> record) {
+    final ch = int.tryParse(record['ch']?.toString() ?? '');
+    return record['id']?.toString() == fieldDeviceId && ch == fieldChannel;
+  }
+
+  // =====================================================
+  // NILAI SENSOR YANG MASUK AKAL
+  // =====================================================
+  // Paket radio yang rusak tapi lolos CRC kadang membawa nilai mustahil
+  // (mis. suhu 365 °C, gust 190 km/j di tengah bacaan normal). Satu paket
+  // seperti itu cukup untuk merusak rata-rata satu jam, jadi seluruh record
+  // dibuang (nilai lain di paket yang sama juga tidak bisa dipercaya).
+
+  static const Map<String, (double, double)> plausibleRange = {
+    'temp_out': (-10, 60), // °C
+    'hum_out': (1, 100), // %
+    'wind_speed': (0, 120), // km/j
+    'wind_gust': (0, 120), // km/j
+    'light_lux': (0, 200000), // lux
+  };
+
+  static bool isPlausibleRecord(Map<dynamic, dynamic> record) {
+    for (final e in plausibleRange.entries) {
+      final raw = record[e.key];
+      if (raw == null) continue;
+      final v = raw is num ? raw.toDouble() : double.tryParse(raw.toString());
+      if (v == null) continue;
+      if (v < e.value.$1 || v > e.value.$2) return false;
+    }
+    return true;
+  }
+
+  // =====================================================
   // USER YANG SEDANG LOGIN
   // =====================================================
 
   static UserModel? _currentUser;
+
+  // Username yang diketik saat login berhasil
+  // (cadangan kalau respons backend tidak berisi username).
+  static String? _loginUsername;
+
+  /// Username akun yang sedang login, huruf kecil. Null kalau belum login.
+  static String? get currentUsername {
+    final fromApi = _currentUser?.username.trim() ?? '';
+    final name = fromApi.isNotEmpty ? fromApi : (_loginUsername ?? '');
+    return name.isEmpty ? null : name.toLowerCase();
+  }
 
   // =====================================================
   // REGISTER
@@ -155,6 +208,9 @@ class ApiService {
                       'password salah',
         };
       }
+
+      _loginUsername =
+          username.trim();
 
       final dynamic userData =
           data['loginResult'] ??
@@ -336,6 +392,9 @@ class ApiService {
   Future<void>
       logout() async {
     _currentUser =
+        null;
+
+    _loginUsername =
         null;
   }
 

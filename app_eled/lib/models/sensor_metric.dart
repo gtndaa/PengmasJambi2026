@@ -8,7 +8,7 @@ enum SensorMetric {
   light('Intensitas Cahaya', 'lux', Icons.light_mode_outlined, false),
   rain('Curah Hujan 1 Jam Terakhir', 'mm', Icons.umbrella_outlined, true),
   wind('Kecepatan Angin', 'km/j', Icons.air, false),
-  gust('Wind Gust', 'km/j', Icons.speed, false);
+  gust('Wind Gust', 'km/j', Icons.speed, false, isMax: true);
 
   final String label;
   final String unit;
@@ -17,7 +17,11 @@ enum SensorMetric {
   /// true = dijumlahkan per hari (hujan), false = dirata-rata per hari
   final bool isSum;
 
-  const SensorMetric(this.label, this.unit, this.icon, this.isSum);
+  /// true = yang ditampilkan nilai tertinggi per jam/hari/dst. (wind gust)
+  final bool isMax;
+
+  const SensorMetric(this.label, this.unit, this.icon, this.isSum,
+      {this.isMax = false});
 
   double valueOf(SensorDataModel d) {
     switch (this) {
@@ -30,9 +34,9 @@ enum SensorMetric {
       case SensorMetric.rain:
         return d.rainDelta;
       case SensorMetric.wind:
-        return d.windSpeed * 3.6; // m/s -> km/j
+        return d.windSpeed; // alat sudah mengirim km/j
       case SensorMetric.gust:
-        return d.windGust * 3.6;
+        return d.windGust;
     }
   }
 }
