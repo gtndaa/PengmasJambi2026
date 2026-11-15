@@ -2,7 +2,13 @@ import '../services/api_service.dart';
 
 /// Akun yang boleh membuka WiFi Settings & Advanced Settings.
 /// Tulis username dengan huruf kecil.
-const Set<String> adminUsernames = {'kyoh', 'gita', 'admin', 'galihmsa'};
+const Set<String> adminUsernames = {
+  'kyoh',
+  'gita',
+  'admin',
+  'galihmsa',
+  'petani.jambi',
+};
 
 /// true kalau akun yang sedang login termasuk [adminUsernames].
 bool get isAdminUser {
